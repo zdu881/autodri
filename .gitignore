@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Artifacts
+driver_monitor/output/
+gaze_onnx/output/
+gaze_onnx/snaps/
+gaze_onnx/snaps_v2/
+gaze_onnx/snaps_v3/
+gaze_onnx/snaps_v4/
+
+# Top-level non-repo content
+GroundingDINO/
+models/
+l2cs.onnx.tar.xz
+6月1日.mp4
