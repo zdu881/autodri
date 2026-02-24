@@ -87,6 +87,22 @@ def parse_args() -> argparse.Namespace:
         help="Augmented target count per train class (0 uses max class count)",
     )
     p.add_argument(
+        "--target-train-map",
+        type=str,
+        default="",
+        help=(
+            "Optional explicit target map, e.g. "
+            "'Forward=320,In-Car=260,Non-Forward=220,Other=60'. "
+            "If set, it overrides --target-train-per-class for listed labels."
+        ),
+    )
+    p.add_argument(
+        "--max-augment-ratio",
+        type=float,
+        default=8.0,
+        help="Upper bound on synthetic expansion per class: target <= raw_count * ratio",
+    )
+    p.add_argument(
         "--copy-mode",
         choices=("copy", "hardlink", "symlink"),
         default="copy",
@@ -210,6 +226,28 @@ def materialize(src: Path, dst: Path, mode: str) -> None:
         raise ValueError(f"unknown copy mode: {mode}")
 
 
+def parse_target_map(s: str) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    text = (s or "").strip()
+    if not text:
+        return out
+    for chunk in text.split(","):
+        c = chunk.strip()
+        if not c:
+            continue
+        if "=" not in c:
+            raise ValueError(f"Bad --target-train-map item '{c}', expected Label=Number")
+        k, v = c.split("=", 1)
+        label = k.strip()
+        if label not in VALID_LABELS:
+            raise ValueError(f"Unknown label '{label}' in --target-train-map")
+        n = int(float(v.strip()))
+        if n < 1:
+            raise ValueError(f"Target for '{label}' must be >=1")
+        out[label] = n
+    return out
+
+
 def aug_photometric(img: np.ndarray, rng: random.Random) -> np.ndarray:
     """Strong but realistic augmentation for illumination/domain robustness."""
     out = img.copy()
@@ -254,7 +292,7 @@ def aug_photometric(img: np.ndarray, rng: random.Random) -> np.ndarray:
 def augment_minority_train(
     out_dir: Path,
     all_rows: List[Dict[str, str]],
-    target_per_class: int,
+    target_by_class: Dict[str, int],
     seed: int,
 ) -> None:
     rng = random.Random(seed)
@@ -264,10 +302,13 @@ def augment_minority_train(
         by_cls[r["label"]].append(r)
 
     for cls, rows in sorted(by_cls.items()):
-        cur = sum(1 for r in all_rows if r["split"] == "train" and r["label"] == cls)
-        if cur >= target_per_class:
+        if cls not in target_by_class:
             continue
-        need = target_per_class - cur
+        target = int(target_by_class[cls])
+        cur = sum(1 for r in all_rows if r["split"] == "train" and r["label"] == cls)
+        if cur >= target:
+            continue
+        need = target - cur
         cls_dir = out_dir / "train" / cls
         aug_count = 0
         for i in range(need):
@@ -356,9 +397,17 @@ def main() -> None:
     train_non_aug = [r for r in rows_out if r["split"] == "train" and r["augmented"] == "0"]
     if args.augment_minority:
         cls_counts = Counter(r["label"] for r in train_non_aug)
-        target = args.target_train_per_class if args.target_train_per_class > 0 else max(cls_counts.values())
-        print(f"Augment minority classes to target: {target}")
-        augment_minority_train(out_dir=out_dir, all_rows=rows_out, target_per_class=target, seed=args.seed)
+        default_target = args.target_train_per_class if args.target_train_per_class > 0 else max(cls_counts.values())
+        target_map = parse_target_map(args.target_train_map)
+        target_by_class: Dict[str, int] = {}
+        ratio = max(1.0, float(args.max_augment_ratio))
+        for cls, raw in sorted(cls_counts.items()):
+            requested = int(target_map.get(cls, default_target))
+            max_allowed = max(raw, int(round(raw * ratio)))
+            target = min(requested, max_allowed)
+            target_by_class[cls] = target
+        print(f"Augment targets by class: {target_by_class}  (max_augment_ratio={ratio:.2f})")
+        augment_minority_train(out_dir=out_dir, all_rows=rows_out, target_by_class=target_by_class, seed=args.seed)
 
     # Persist split manifest.
     split_manifest = out_dir / "split_manifest.csv"

@@ -40,7 +40,7 @@ def parse_args():
     p.add_argument("--name", default="gaze_v1")
     p.add_argument(
         "--aug-preset",
-        choices=["baseline", "robust"],
+        choices=["baseline", "robust", "genv3"],
         default="robust",
         help="Augmentation preset. robust is recommended for cross-domain generalization.",
     )
@@ -86,6 +86,26 @@ def train(args):
                 auto_augment="randaugment",
                 mixup=0.20,
                 cutmix=0.20,
+            )
+        )
+    elif args.aug_preset == "genv3":
+        # Generalization-oriented preset for this project:
+        # avoid heavy sample-mixing (mixup/cutmix) that can distort gaze semantics,
+        # keep robust photometric/geometric variations.
+        train_kwargs.update(
+            dict(
+                hsv_h=0.025,
+                hsv_s=0.65,
+                hsv_v=0.65,
+                degrees=18.0,
+                translate=0.12,
+                scale=0.35,
+                flipud=0.0,
+                fliplr=0.5,
+                erasing=0.20,
+                auto_augment="randaugment",
+                mixup=0.0,
+                cutmix=0.0,
             )
         )
     else:

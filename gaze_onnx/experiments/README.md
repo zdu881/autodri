@@ -177,3 +177,30 @@ python gaze_onnx/experiments/train_gaze_cls.py \
 - `domain_holdout` 会把一个域完整留作验证，避免“同车同人泄漏”。
 - `robust` 预设包含更强颜色/亮度/几何扰动（`randaugment + mixup + cutmix + erasing`）。
 - 如果要训练最终上线模型，可再用 `domain_stratified` 生成训练集，让两域都进入训练。
+
+### genv3（泛化优先，不做二分类拆分）
+
+针对“驾驶状态主任务 + Other 样本少”的场景，建议：
+- 控制少数类过采样上限（避免从极少样本合成过多伪样本）
+- 使用 `genv3` 增强预设（不使用 `mixup/cutmix`，保留强光照扰动）
+
+示例（holdout car2）：
+
+```bash
+python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
+  --samples-dir gaze_onnx/experiments/anno_two_domain_v3_ratio_roi_run1 \
+  --out-dir gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3 \
+  --split-mode domain_holdout \
+  --val-domain car2_person2 \
+  --augment-minority \
+  --target-train-map "Forward=320,In-Car=260,Non-Forward=220,Other=60" \
+  --max-augment-ratio 8
+
+python gaze_onnx/experiments/train_gaze_cls.py \
+  --data gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3 \
+  --mode train \
+  --model yolov8n-cls.pt \
+  --aug-preset genv3 \
+  --epochs 120 \
+  --patience 35
+```
