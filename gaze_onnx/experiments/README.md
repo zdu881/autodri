@@ -204,3 +204,15 @@ python gaze_onnx/experiments/train_gaze_cls.py \
   --epochs 120 \
   --patience 35
 ```
+
+### 跨域评估表（帧级 + 事件级）
+
+使用 `cross_domain_eval.py` 统一输出 holdout 方向的评估表。
+
+```bash
+python gaze_onnx/experiments/cross_domain_eval.py \
+  --eval-item "car1_to_car2|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car2_genv3_cpu3/weights/best.pt" \
+  --eval-item "car2_to_car1|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car1_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car1_genv3_cpu/weights/best.pt" \
+  --event-window-sec 30 \
+  --out-csv gaze_onnx/experiments/runs_cls/cross_domain_eval_genv3.csv
+```
