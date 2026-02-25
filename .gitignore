@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 .ipynb_checkpoints/
+.vscode/
+*.log
 
 # Artifacts
 driver_monitor/output/
@@ -16,3 +18,19 @@ GroundingDINO/
 models/
 l2cs.onnx.tar.xz
 6月1日.mp4
+12月23日(1).mp4
+yolo26n.pt
+yolov8n-cls.pt
+
+# Training/runtime outputs
+runs/
+gaze_onnx/experiments/runs_cls/
+gaze_onnx/experiments/web_label_*.log
+
+# Large annotation and dataset payloads (keep scripts/manifests in git)
+gaze_onnx/experiments/anno_*/
+gaze_onnx/experiments/cls_dataset*/
+gaze_onnx/experiments/samples_*/
+
+# Keep ROI metadata text/csv, ignore heavy reference images
+gaze_onnx/experiments/roi_refs/**/*.jpg

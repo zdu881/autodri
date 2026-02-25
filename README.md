@@ -14,6 +14,7 @@
 ```
 .
 ├─ driver_monitor/
+│  ├─ README.md              # 模块说明（注视 + 手握方向盘）
 │  ├─ gaze_tracking.py        # MediaPipe 眼球追踪与视线方向
 │  ├─ hand_on_wheel.py         # GroundingDINO 检测手与方向盘
 │  ├─ check_mp.py              # MediaPipe 环境检查
@@ -88,6 +89,8 @@ python gaze_onnx/gaze_state_onnx.py \
 
 - `driver_monitor/output/`：注视与握持检测的视频结果
 - `gaze_onnx/output/`：注视估计的视频、CSV、调试图、统计文件
+- `docs/generalization_datasets.md`：跨人/跨车泛化训练与数据整合计划
+- `docs/annotation_workflow.md`：从零开始的两车两人标注流程（含 ROI 标注与工具命令）
 
 ---
 
