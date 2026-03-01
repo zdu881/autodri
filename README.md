@@ -91,6 +91,7 @@ python gaze_onnx/gaze_state_onnx.py \
 - `gaze_onnx/output/`：注视估计的视频、CSV、调试图、统计文件
 - `docs/generalization_datasets.md`：跨人/跨车泛化训练与数据整合计划
 - `docs/annotation_workflow.md`：从零开始的两车两人标注流程（含 ROI 标注与工具命令）
+  - 已新增“p1/p2/... 批量固化流程”：SMB 拉取 -> ROI 标注 -> 小样本标注 -> 推理/训练
 
 ---
 

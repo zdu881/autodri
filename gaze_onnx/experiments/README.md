@@ -216,3 +216,43 @@ python gaze_onnx/experiments/cross_domain_eval.py \
   --event-window-sec 30 \
   --out-csv gaze_onnx/experiments/runs_cls/cross_domain_eval_genv3.csv
 ```
+
+### 多参与者（pX）批量数据流程
+
+已固化脚本链路：
+
+1) SMB 同步（不挂载）  
+`sync_natural_driving_smb.py`
+
+```bash
+export SMB_PASSWORD='你的密码'
+python gaze_onnx/experiments/sync_natural_driving_smb.py \
+  --user nyz \
+  --password-env SMB_PASSWORD \
+  --participant p1 \
+  --out-root data/natural_driving
+```
+
+2) 生成 ROI 标注包（网格参考图 + 待填写 manifest）  
+`prepare_roi_label_pack.py`
+
+```bash
+python gaze_onnx/experiments/prepare_roi_label_pack.py \
+  --videos-root data/natural_driving/p1/剪辑好的视频 \
+  --out-dir gaze_onnx/experiments/roi_refs/p1_label_pack \
+  --glob '*.mp4'
+```
+
+3) ROI 清单转 domains.csv  
+`build_domains_csv_from_roi_manifest.py`
+
+```bash
+python gaze_onnx/experiments/build_domains_csv_from_roi_manifest.py \
+  --roi-manifest gaze_onnx/experiments/roi_refs/p1_label_pack/roi_label_manifest.csv \
+  --out-csv gaze_onnx/experiments/manifests/p1_domains.csv \
+  --domain-id p1 \
+  --samples-per-video 150
+```
+
+4) 生成小样本标注包并进入 Web 标注  
+`create_multidomain_annotation_pack.py` + `web_label_tool.py`
