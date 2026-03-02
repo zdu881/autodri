@@ -21,6 +21,7 @@ l2cs.onnx.tar.xz
 12月23日(1).mp4
 yolo26n.pt
 yolov8n-cls.pt
+data/
 
 # Training/runtime outputs
 runs/
