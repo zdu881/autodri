@@ -1,231 +1,72 @@
-# gaze_onnx 实验：判断是模型精度问题还是划分策略问题
+# gaze_onnx/experiments 操作手册（泛化优先）
 
-你现在遇到的典型现象（中段大量 In-Car、开头看中控却 Forward）可能来自两类根因：
+本手册是当前项目的执行基线，目标是把流程固化为可复用的四步：
+1. ROI 确定与纠错
+2. 小样本标注
+3. few-shot 微调
+4. 帧级 + 事件级评估
 
-- **模型输出问题**：L2CS 产出的 pitch/yaw 本身不可靠（域偏移、裁剪/光照、姿态极端等），导致无论怎么改阈值都难救。
-- **策略/校准问题**：pitch/yaw 还行，但 **ref 校准/漂移**、阈值、去抖、规则形状不合理，导致可通过策略显著提升。
-
-这里提供一个最小闭环：
-
-1) **从全量结果中“分层抽样”导出少量帧**（时间段×预测类别×边界样本）
-2) **人工三分类标注**（Forward / Non-Forward / In-Car）
-3) **自动评估 + 阈值消融**：看只改阈值能提升多少（策略空间），以及错误是否集中在边界附近（更像策略）
-
----
-
-## 1) CSV 时序诊断（不需要人工标注）
-
-先看 ref 是否漂移、以及 In-Car 触发条件是否“饱和”。
-
-```bash
-python gaze_onnx/experiments/analyze_csv.py \
-  --pred-csv gaze_onnx/output/output_gaze_smooth4_full.csv \
-  --window-sec 10
-```
-
-重点看每个时间窗的：
-- `refP/refY` 是否慢慢漂移
-- `dp50/dp90` 是否整体偏移
-- `trig(InCar)` 是否接近 100%（这通常意味着阈值或 ref 出问题）
+适用场景：
+- 一车一人视角采集（后续可扩展到更多参与者）
+- 视频中可能存在 gaze/wheel 两个窗口互换
+- 研究关注驾驶状态片段（优先 `Forward / Non-Forward / In-Car`）
 
 ---
 
-## 2) 抽样导出待标注帧
+## 1. 当前研究口径
 
-建议从**你最不满意的那份 full 输出**开始（比如 `output_gaze_smooth4_full.*`）。
-
-```bash
-python gaze_onnx/experiments/sample_frames.py \
-  --video gaze_onnx/output/output_gaze_smooth4_full.mp4 \
-  --pred-csv gaze_onnx/output/output_gaze_smooth4_full.csv \
-  --out-dir gaze_onnx/experiments/samples_smooth4_full \
-  --n-total 360 --time-bins 6 --boundary-frac 0.35
-```
-
-产物：
-- `manifest.csv`：样本清单
-- 一堆 `*.png`：带基本信息面板的帧
+- 主要任务：驾驶状态判别（3 类）
+  - `Forward`
+  - `Non-Forward`
+  - `In-Car`
+- 辅助类：`Other`
+  - 包含不在驾驶位、看不到有效人脸、无法判别等情况
+  - 在训练时可按任务选择是否纳入
+- 评估口径：
+  - 帧级指标：用于看模型瞬时能力
+  - 事件级指标：20s 非重叠窗口多数投票，更贴近真实监测应用
 
 ---
 
-## 3) 人工标注
+## 2. 环境准备
+
+推荐统一使用 `adri` 环境：
 
 ```bash
-python gaze_onnx/experiments/label_tool.py \
-  --samples-dir gaze_onnx/experiments/samples_smooth4_full
+conda activate adri
 ```
 
-按键：
-- `1`/`f` = Forward
-- `2`/`n` = Non-Forward
-- `3`/`i` = In-Car
-- `0`/`u` = Unknown（评估时会跳过）
-- `b` = 回退一条
-- `q` = 退出
-
-会生成/更新：
-- `labels.csv`
-
-建议标注量：
-- 先做 200~400 帧（通常就能判断方向）
-
----
-
-## 4) 评估 + 阈值消融（关键）
+最小检查：
 
 ```bash
-python gaze_onnx/experiments/eval_labels.py \
-  --pred-csv gaze_onnx/output/output_gaze_smooth4_full.csv \
-  --labels gaze_onnx/experiments/samples_smooth4_full/labels.csv
-```
-
-你会看到：
-- 当前策略的 accuracy / confusion matrix
-- 每类 precision/recall
-- **threshold grid search** 的最佳 accuracy
-- “strategy headroom（只改阈值能提升多少）”
-
-如何解读：
-- 如果 **headroom 很大（例如 +10%~+30%）**：说明模型角度信息可用，主要是策略/阈值/去抖形状问题。
-- 如果 **headroom 很小（例如 <+3%~+5%）**：说明在现有 delta 上“阈值已救不了”，更像模型输出本身或 ref 校准路径有系统性偏差（需要改 ref 门控/改 crop/改模型）。
-
----
-
-## 推荐你先跑哪两步？
-
-1) `analyze_csv.py`（立刻能告诉你 ref/触发是否异常）
-2) 抽样 360 帧 + 标注 200 帧，然后跑 `eval_labels.py`
-
-如果你愿意，我也可以基于你标注出来的 `labels.csv`：
-- 自动给出一套“更稳”的阈值建议
-- 以及指出最离谱的错例帧（方便你快速看是模型瞎了还是规则瞎了）
-
----
-
-## 新增：从零标注两域数据
-
-当没有现成预测 CSV 时，使用以下脚本：
-
-1) 生成 ROI 参考图（带网格坐标）：
-
-```bash
-python gaze_onnx/experiments/make_roi_reference.py \
-  --video "6月1日.mp4" \
-  --out-dir gaze_onnx/experiments/roi_refs/car1_person1
-```
-
-2) 生成多域标注包（直接从视频+ROI抽样）：
-
-```bash
-python gaze_onnx/experiments/create_multidomain_annotation_pack.py \
-  --domains-csv gaze_onnx/experiments/manifests/two_domain_videos.v1.csv \
-  --out-dir gaze_onnx/experiments/anno_two_domain_v1 \
-  --samples-per-domain 600
-```
-
-3) Web 标注（支持 `Other`）：
-
-```bash
-python gaze_onnx/experiments/web_label_tool.py \
-  --samples-dir gaze_onnx/experiments/anno_two_domain_v1 \
-  --port 8000
+python --version
+python gaze_onnx/experiments/train_gaze_cls.py --help
+python gaze_onnx/experiments/web_label_tool.py --help
 ```
 
 ---
 
-## 新增：抗明暗 + 抗车/人域差异训练
+## 3. 目录约定
 
-你已经完成两域标注后，推荐按下面流程训练：
+建议按参与者组织：
 
-1) 先做跨域验证（留一域）评估泛化能力
+- 原始视频：`data/natural_driving/pX/剪辑好的视频/`
+- ROI 标注参考：`gaze_onnx/experiments/roi_refs/pX_label_pack/`
+- 任务清单：`gaze_onnx/experiments/manifests/pX_*.csv`
+- 标注包：`gaze_onnx/experiments/anno_pX_*`
+- 训练集：`gaze_onnx/experiments/cls_dataset_pX_*`
+- 训练输出：`runs/classify/gaze_onnx/experiments/runs_cls/...`
+- ONNX 导出：`models/*.onnx`
 
-```bash
-python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
-  --samples-dir gaze_onnx/experiments/anno_two_domain_v3_ratio_roi_run1 \
-  --out-dir gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2 \
-  --split-mode domain_holdout \
-  --val-domain car2_person2 \
-  --augment-minority \
-  --target-train-per-class 550
-```
+---
 
-2) 用更强增强训练分类模型（`robust` 预设）
+## 4. 端到端流程（新参与者 pX）
 
-```bash
-python gaze_onnx/experiments/train_gaze_cls.py \
-  --data gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2 \
-  --mode train \
-  --model yolov8n-cls.pt \
-  --epochs 80 \
-  --imgsz 224 \
-  --batch 32 \
-  --device 0 \
-  --aug-preset robust \
-  --name gaze_two_domain_holdout_car2
-```
-
-3) 评估：
-
-```bash
-python gaze_onnx/experiments/train_gaze_cls.py \
-  --data gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2 \
-  --mode eval \
-  --weights gaze_onnx/experiments/runs_cls/gaze_two_domain_holdout_car2/weights/best.pt
-```
-
-说明：
-- `domain_holdout` 会把一个域完整留作验证，避免“同车同人泄漏”。
-- `robust` 预设包含更强颜色/亮度/几何扰动（`randaugment + mixup + cutmix + erasing`）。
-- 如果要训练最终上线模型，可再用 `domain_stratified` 生成训练集，让两域都进入训练。
-
-### genv3（泛化优先，不做二分类拆分）
-
-针对“驾驶状态主任务 + Other 样本少”的场景，建议：
-- 控制少数类过采样上限（避免从极少样本合成过多伪样本）
-- 使用 `genv3` 增强预设（不使用 `mixup/cutmix`，保留强光照扰动）
-
-示例（holdout car2）：
-
-```bash
-python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
-  --samples-dir gaze_onnx/experiments/anno_two_domain_v3_ratio_roi_run1 \
-  --out-dir gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3 \
-  --split-mode domain_holdout \
-  --val-domain car2_person2 \
-  --augment-minority \
-  --target-train-map "Forward=320,In-Car=260,Non-Forward=220,Other=60" \
-  --max-augment-ratio 8
-
-python gaze_onnx/experiments/train_gaze_cls.py \
-  --data gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3 \
-  --mode train \
-  --model yolov8n-cls.pt \
-  --aug-preset genv3 \
-  --epochs 120 \
-  --patience 35
-```
-
-### 跨域评估表（帧级 + 事件级）
-
-使用 `cross_domain_eval.py` 统一输出 holdout 方向的评估表。
-
-```bash
-python gaze_onnx/experiments/cross_domain_eval.py \
-  --eval-item "car1_to_car2|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car2_genv3_cpu3/weights/best.pt" \
-  --eval-item "car2_to_car1|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car1_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car1_genv3_cpu/weights/best.pt" \
-  --event-window-sec 30 \
-  --out-csv gaze_onnx/experiments/runs_cls/cross_domain_eval_genv3.csv
-```
-
-### 多参与者（pX）批量数据流程
-
-已固化脚本链路：
-
-1) SMB 同步（不挂载）  
-`sync_natural_driving_smb.py`
+### 4.1 同步原始视频（可选，SMB）
 
 ```bash
 export SMB_PASSWORD='你的密码'
+
 python gaze_onnx/experiments/sync_natural_driving_smb.py \
   --user nyz \
   --password-env SMB_PASSWORD \
@@ -233,18 +74,27 @@ python gaze_onnx/experiments/sync_natural_driving_smb.py \
   --out-root data/natural_driving
 ```
 
-2) 生成 ROI 标注包（网格参考图 + 待填写 manifest）  
-`prepare_roi_label_pack.py`
+说明：该脚本是增量同步，不会重复下载同大小文件。
+
+### 4.2 生成 ROI 标注参考包
 
 ```bash
 python gaze_onnx/experiments/prepare_roi_label_pack.py \
   --videos-root data/natural_driving/p1/剪辑好的视频 \
   --out-dir gaze_onnx/experiments/roi_refs/p1_label_pack \
-  --glob '*.mp4'
+  --glob '*.mp4' \
+  --sample-position first \
+  --grid-step 220
 ```
 
-3) ROI 清单转 domains.csv  
-`build_domains_csv_from_roi_manifest.py`
+输出：
+- `roi_label_manifest.csv`（待填写 ROI 坐标）
+- `refs/*__grid.jpg`（网格参考图）
+- `invalid_or_unreadable_videos.txt`
+
+### 4.3 将 ROI 清单转为抽样清单
+
+在 `roi_label_manifest.csv` 填完 `roi_x1,roi_y1,roi_x2,roi_y2` 后：
 
 ```bash
 python gaze_onnx/experiments/build_domains_csv_from_roi_manifest.py \
@@ -254,19 +104,11 @@ python gaze_onnx/experiments/build_domains_csv_from_roi_manifest.py \
   --samples-per-video 150
 ```
 
-4) 生成小样本标注包并进入 Web 标注  
-`create_multidomain_annotation_pack.py` + `web_label_tool.py`
+### 4.4 双窗口自动纠错（gaze/wheel 交换检测）
 
-### 固定双 ROI（gaze/wheel）自动交换纠错
-
-当视频剪辑把两块区域位置放反时，可先做自动判别，再决定每个视频的
-`gaze_roi` 和 `wheel_roi`。
-
-固定候选区域（你当前设定）：
+固定候选区域：
 - ROI-A: `0,0,1900,1100`
 - ROI-B: `1900,660,3300,1400`
-
-批量判别（仅分配，不跑推理）：
 
 ```bash
 python gaze_onnx/experiments/assign_dual_roi.py \
@@ -275,30 +117,20 @@ python gaze_onnx/experiments/assign_dual_roi.py \
   --roi-b 1900 660 3300 1400 \
   --base-gaze-roi A \
   --samples 64 \
-  --assignment-csv gaze_onnx/experiments/output/p1_dual_roi_assignment.csv \
+  --assignment-csv data/natural_driving_p1/p1_dual_roi_assignment.csv \
   --preview-dir gaze_onnx/experiments/output/p1_dual_roi_previews
 ```
 
-输出 CSV 关键字段：
-- `gaze_roi` / `wheel_roi`: 本视频最终分配结果
-- `swapped`: `1` 表示相对于基准映射（A->gaze）发生交换
-- `assignment_uncertain`: `1` 表示分配边界较近，建议人工复核
-- 默认即使存在坏视频也会继续并输出 CSV；若要严格失败可加 `--fail-on-error`
+关键字段：
+- `gaze_roi`, `wheel_roi`：最终 ROI
+- `swapped=1`：相对基准映射发生交换
+- `assignment_uncertain=1`：建议人工复核
 
-若要直接串联运行 gaze + wheel 推理，可加：
+### 4.5 从纠错结果构建 gaze 任务清单
 
-```bash
-  --run-infer \
-  --run-out-dir gaze_onnx/experiments/output/p1_dual_roi_runs
-```
-
-### 从双 ROI 分配结果构建任务清单
-
-`build_domains_csv_from_dual_assignment.py` 可把 `assign_dual_roi.py` 的结果转成
-`create_multidomain_annotation_pack.py` 可用的 domains.csv。
+常规（gaze 用 `gaze_roi`）：
 
 ```bash
-# 常规：gaze 用 gaze_roi
 python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
   --assignment-csv data/natural_driving_p1/p1_dual_roi_assignment.csv \
   --task gaze \
@@ -310,10 +142,9 @@ python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
   --out-csv gaze_onnx/experiments/manifests/p1_gaze_domains.csv
 ```
 
-如遇到该批次视频语义反向（即 `gaze_roi` 实际是 wheel 视角），可临时反向：
+若某批次语义反向（实践中可能出现），可临时反向：
 
 ```bash
-# 反向：gaze 用 wheel_roi
 python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
   --assignment-csv data/natural_driving_p1/p1_dual_roi_assignment.csv \
   --task wheel \
@@ -325,29 +156,49 @@ python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
   --out-csv gaze_onnx/experiments/manifests/p1_gaze_domains_inverted.csv
 ```
 
-### 200-shot 小样本标注与微调
+### 4.6 生成标注包（推荐 `seek`）
 
-1) 从大标注包抽 200 张（优先保留已标样本）：
+```bash
+python gaze_onnx/experiments/create_multidomain_annotation_pack.py \
+  --domains-csv gaze_onnx/experiments/manifests/p1_gaze_domains.csv \
+  --out-dir gaze_onnx/experiments/anno_p1_gaze_small_v1 \
+  --seed 42 \
+  --read-mode seek
+```
+
+说明：
+- `seek`：稀疏抽帧更快，适合长视频
+- `scan`：逐帧扫描，兼容性更保守
+
+### 4.7 Web 标注
+
+```bash
+python gaze_onnx/experiments/web_label_tool.py \
+  --samples-dir gaze_onnx/experiments/anno_p1_gaze_small_v1 \
+  --host 0.0.0.0 \
+  --port 8001
+```
+
+若报 `Address already in use`，换端口：
+
+```bash
+python gaze_onnx/experiments/web_label_tool.py \
+  --samples-dir gaze_onnx/experiments/anno_p1_gaze_small_v1 \
+  --port 8011
+```
+
+### 4.8 构建 200-shot 子包（可选）
 
 ```bash
 python gaze_onnx/experiments/build_fewshot_pack.py \
-  --src-pack gaze_onnx/experiments/anno_p1_gaze_small_v3_invert \
+  --src-pack gaze_onnx/experiments/anno_p1_gaze_small_v1 \
   --out-pack gaze_onnx/experiments/anno_p1_gaze_200shot_v1 \
   --num-samples 200 \
   --sample-mode by_video_uniform \
   --keep-labeled
 ```
 
-2) Web 标注：
-
-```bash
-python gaze_onnx/experiments/web_label_tool.py \
-  --samples-dir gaze_onnx/experiments/anno_p1_gaze_200shot_v1 \
-  --host 0.0.0.0 \
-  --port 8001
-```
-
-3) 构建“驾驶状态三类”训练集（过滤 Other/Unknown）：
+### 4.9 生成训练数据集（驾驶状态三类）
 
 ```bash
 python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
@@ -361,7 +212,9 @@ python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
   --copy-mode hardlink
 ```
 
-4) 基于已有模型微调：
+### 4.10 few-shot 微调
+
+推荐优先基于已有泛化基模微调：
 
 ```bash
 conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
@@ -375,7 +228,7 @@ conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
   --name gaze_p1_200shot_driveonly_ft_v1_gpu1
 ```
 
-5) 导出 ONNX：
+### 4.11 导出 ONNX
 
 ```bash
 conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
@@ -384,13 +237,133 @@ conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
   --weights runs/classify/gaze_onnx/experiments/runs_cls/gaze_p1_200shot_driveonly_ft_v1_gpu1/weights/best.pt
 ```
 
-### 20s 事件级汇总（研究口径）
+可发布为：
+- `models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx`
 
-将帧级 CSV 聚合为 20 秒窗口，多数投票并忽略 Other/Unknown：
+### 4.12 单视频全量推理 + 20s 事件级聚合
+
+```bash
+conda run -n adri python gaze_onnx/gaze_state_cls.py \
+  --video "data/natural_driving_p1/p1_剪辑好的视频/第三批/10.31 085825/12月13日(1).mp4" \
+  --roi 1900 660 3300 1400 \
+  --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
+  --out-video data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.mp4 \
+  --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.csv
+```
 
 ```bash
 python gaze_onnx/experiments/aggregate_gaze_windows.py \
-  --csv data/natural_driving_p1/infer_onevideo/p1_1031_085825_gaze_full.csv \
-  --out-csv data/natural_driving_p1/infer_onevideo/p1_1031_085825_gaze_full.event20s.csv \
+  --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.csv \
+  --out-csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.event20s.csv \
   --window-sec 20
 ```
+
+---
+
+## 5. 跨域统一评估（帧级 + 事件级）
+
+```bash
+python gaze_onnx/experiments/cross_domain_eval.py \
+  --eval-item "car1_to_car2|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car2_genv3_cpu3/weights/best.pt" \
+  --eval-item "car2_to_car1|gaze_onnx/experiments/cls_dataset_two_domain_holdout_car1_genv3|runs/classify/gaze_onnx/experiments/runs_cls/gaze_holdout_car1_genv3_cpu/weights/best.pt" \
+  --event-window-sec 20 \
+  --out-csv gaze_onnx/experiments/runs_cls/cross_domain_eval_genv3.csv
+```
+
+建议投稿时至少报告：
+- 帧级：`accuracy` + `macro-F1`
+- 事件级：窗口多数投票后的 `accuracy` + `macro-F1`
+- 类别级召回：特别关注 `Non-Forward` 与 `In-Car`
+
+---
+
+## 6. Hand-on-wheel 项目流程（30s 稳定状态）
+
+手放方向盘项目建议采用“帧级判定 + 窗口多数投票”的同构思路，减少状态抖动。
+
+基础推理：
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --output driver_monitor/output/hand_on_wheel.mp4 \
+  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
+  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --roi 1900 660 3300 1400 \
+  --state-csv driver_monitor/output/hand_on_wheel_states.csv
+```
+
+30s 窗口稳定输出（推荐用于报告）：
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --output driver_monitor/output/hand_on_wheel_30s.mp4 \
+  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
+  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --roi 1900 660 3300 1400 \
+  --decision-window-sec 30 \
+  --state-csv driver_monitor/output/hand_on_wheel_30s_states.csv
+```
+
+结果分析：
+
+```bash
+python driver_monitor/analyze_state_csv.py \
+  --csv driver_monitor/output/hand_on_wheel_30s_states.csv \
+  --sweep-windows 0,3,5,30 \
+  --sweep-out-csv driver_monitor/output/window_sweep.csv
+```
+
+---
+
+## 7. 标注规范（必须统一）
+
+- `Forward`：主要注视前方道路
+- `Non-Forward`：明显偏离前方（侧看、低头等）
+- `In-Car`：看车内区域（中控/仪表/车内后视镜等）
+- `Other`：不在驾驶位、无有效人脸、无法判别、非目标驾驶员
+- `Unknown`：仅用于标注中间态，不建议作为训练类
+
+驾驶状态三类训练时，通常过滤 `Other/Unknown`。
+
+---
+
+## 8. 常见问题
+
+### 8.1 Web 标注端口占用
+
+报错：`OSError: [Errno 98] Address already in use`
+
+处理：
+1. 换端口（例如 `--port 8011`）
+2. 或结束占用进程后复用原端口
+
+### 8.2 ONNXRuntime GPU 回退 CPU
+
+如果缺少 CUDA 动态库，推理会自动回退 CPU。训练可继续使用 PyTorch GPU，不影响训练本身。
+
+### 8.3 双 ROI 自动分配低置信
+
+出现 `assignment_uncertain=1` 时，不要直接批量跑全流程，先看 `preview_dir` 里的叠框图，人工确认后再继续。
+
+---
+
+## 9. 已落地脚本索引
+
+- ROI 与抽样：
+  - `prepare_roi_label_pack.py`
+  - `build_domains_csv_from_roi_manifest.py`
+  - `create_multidomain_annotation_pack.py`
+- 双窗口纠错：
+  - `assign_dual_roi.py`
+  - `build_domains_csv_from_dual_assignment.py`
+- 标注与 few-shot：
+  - `web_label_tool.py`
+  - `build_fewshot_pack.py`
+- 训练与导出：
+  - `prepare_cls_dataset_from_pack.py`
+  - `train_gaze_cls.py`
+- 评估：
+  - `aggregate_gaze_windows.py`
+  - `cross_domain_eval.py`
