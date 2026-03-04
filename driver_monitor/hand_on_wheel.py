@@ -2,15 +2,13 @@ import argparse
 import csv
 import os
 from collections import Counter, deque
+from importlib.util import find_spec
+from pathlib import Path
 from typing import List, Dict, Any, Deque, Tuple
 
 import cv2
 import numpy as np
 import torch
-
-from groundingdino.util.inference import Model
-from groundingdino.util.box_ops import box_iou
-
 
 CLASSES = ["hand", "steering wheel"] # For display/logic
 # Expanded prompts for better recall
@@ -34,6 +32,52 @@ STATE_TO_NUM = {
     STATE_OFF: 0,
     STATE_UNCERTAIN: -1,
 }
+
+
+def resolve_groundingdino_config(config_arg: str) -> str:
+    """Resolve GroundingDINO config path from arg or installed package."""
+    if config_arg:
+        cfg = Path(config_arg).expanduser()
+        if cfg.exists():
+            return str(cfg)
+        raise FileNotFoundError(f"GroundingDINO config not found: {cfg}")
+
+    spec = find_spec("groundingdino")
+    if spec and spec.submodule_search_locations:
+        pkg_root = Path(list(spec.submodule_search_locations)[0])
+        cfg = pkg_root / "config" / "GroundingDINO_SwinT_OGC.py"
+        if cfg.exists():
+            return str(cfg)
+
+    fallback = Path("GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py")
+    if fallback.exists():
+        return str(fallback)
+
+    raise FileNotFoundError(
+        "Unable to locate GroundingDINO config. Install via VCS, or pass --config explicitly."
+    )
+
+
+def resolve_groundingdino_weights(weights_arg: str) -> str:
+    """Resolve GroundingDINO weights path from arg or common local locations."""
+    if weights_arg:
+        w = Path(weights_arg).expanduser()
+        if w.exists():
+            return str(w)
+        raise FileNotFoundError(f"GroundingDINO weights not found: {w}")
+
+    candidates = [
+        Path("models/groundingdino_swint_ogc.pth"),
+        Path("GroundingDINO/weights/groundingdino_swint_ogc.pth"),
+    ]
+    for p in candidates:
+        if p.exists():
+            return str(p)
+
+    raise FileNotFoundError(
+        "Unable to locate GroundingDINO weights. Pass --weights, or place file at "
+        "models/groundingdino_swint_ogc.pth."
+    )
 
 
 def format_timestamp(seconds: float) -> str:
@@ -99,7 +143,19 @@ def compute_iou(hand_boxes: np.ndarray, wheel_boxes: np.ndarray) -> float:
         return 0.0
     hand_tensor = torch.tensor(hand_boxes, dtype=torch.float32)
     wheel_tensor = torch.tensor(wheel_boxes, dtype=torch.float32)
-    iou, _ = box_iou(hand_tensor, wheel_tensor)
+    # NxM IoU matrix, implemented locally to avoid hard import dependency.
+    lt = torch.max(hand_tensor[:, None, :2], wheel_tensor[None, :, :2])
+    rb = torch.min(hand_tensor[:, None, 2:], wheel_tensor[None, :, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[..., 0] * wh[..., 1]
+    hand_area = (hand_tensor[:, 2] - hand_tensor[:, 0]).clamp(min=0) * (
+        hand_tensor[:, 3] - hand_tensor[:, 1]
+    ).clamp(min=0)
+    wheel_area = (wheel_tensor[:, 2] - wheel_tensor[:, 0]).clamp(min=0) * (
+        wheel_tensor[:, 3] - wheel_tensor[:, 1]
+    ).clamp(min=0)
+    union = hand_area[:, None] + wheel_area[None, :] - inter
+    iou = torch.where(union > 0, inter / union, torch.zeros_like(inter))
     return float(iou.max().item()) if iou.numel() else 0.0
 
 
@@ -261,13 +317,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--config",
-        default="../GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py",
-        help="Path to model config",
+        default="",
+        help=(
+            "Path to GroundingDINO config. "
+            "If omitted, auto-resolve from installed groundingdino package."
+        ),
     )
     parser.add_argument(
         "--weights",
-        default="../GroundingDINO/weights/groundingdino_swint_ogc.pth",
-        help="Path to model weights",
+        default="",
+        help=(
+            "Path to GroundingDINO weights. "
+            "If omitted, auto-search models/groundingdino_swint_ogc.pth."
+        ),
     )
     parser.add_argument("--box-threshold", type=float, default=0.25)
     parser.add_argument("--text-threshold", type=float, default=0.25)
@@ -392,9 +454,21 @@ def main() -> None:
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(args.output, fourcc, fps, (width, height))
 
+    resolved_config = resolve_groundingdino_config(args.config)
+    resolved_weights = resolve_groundingdino_weights(args.weights)
+    print(f"Using GroundingDINO config: {resolved_config}")
+    print(f"Using GroundingDINO weights: {resolved_weights}")
+
+    try:
+        from groundingdino.util.inference import Model
+    except ImportError as exc:
+        raise ImportError(
+            "groundingdino is not installed. Run: pip install -r driver_monitor/requirements.txt"
+        ) from exc
+
     model = Model(
-        model_config_path=args.config,
-        model_checkpoint_path=args.weights,
+        model_config_path=resolved_config,
+        model_checkpoint_path=resolved_weights,
         device=args.device,
     )
 

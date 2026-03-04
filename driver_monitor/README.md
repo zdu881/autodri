@@ -5,6 +5,17 @@ Driver-side monitoring scripts:
 - `gaze_tracking.py`: MediaPipe eye/iris based gaze direction overlay
 - `hand_on_wheel.py`: GroundingDINO based hand-on-wheel decision
 
+## Install (VCS)
+
+Install dependencies (including GroundingDINO from GitHub VCS):
+
+```bash
+pip install -r driver_monitor/requirements.txt
+```
+
+Model weights are still required separately. Recommended local path:
+- `models/groundingdino_swint_ogc.pth`
+
 ## Recommended output directory
 
 Use `driver_monitor/output/` for generated videos and ROI helper images.
@@ -23,8 +34,7 @@ python driver_monitor/gaze_tracking.py \
 python driver_monitor/hand_on_wheel.py \
   --video /path/to/input.mp4 \
   --output driver_monitor/output/hand_on_wheel.mp4 \
-  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
-  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --weights models/groundingdino_swint_ogc.pth \
   --select-roi
 ```
 
@@ -36,6 +46,15 @@ python driver_monitor/hand_on_wheel.py \
   --video /path/to/input.mp4 \
   --roi 950 300 1650 690 \
   --artifacts-dir driver_monitor/output
+```
+
+If you want to force a custom config path (normally auto-detected from installed package):
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --config /path/to/GroundingDINO_SwinT_OGC.py \
+  --weights /path/to/groundingdino_swint_ogc.pth
 ```
 
 Add temporal voting (e.g. 30s majority window) and export per-frame state:

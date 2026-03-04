@@ -287,8 +287,7 @@ python gaze_onnx/experiments/cross_domain_eval.py \
 python driver_monitor/hand_on_wheel.py \
   --video /path/to/input.mp4 \
   --output driver_monitor/output/hand_on_wheel.mp4 \
-  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
-  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --weights models/groundingdino_swint_ogc.pth \
   --roi 1900 660 3300 1400 \
   --state-csv driver_monitor/output/hand_on_wheel_states.csv
 ```
@@ -299,8 +298,7 @@ python driver_monitor/hand_on_wheel.py \
 python driver_monitor/hand_on_wheel.py \
   --video /path/to/input.mp4 \
   --output driver_monitor/output/hand_on_wheel_30s.mp4 \
-  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
-  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --weights models/groundingdino_swint_ogc.pth \
   --roi 1900 660 3300 1400 \
   --decision-window-sec 30 \
   --state-csv driver_monitor/output/hand_on_wheel_30s_states.csv

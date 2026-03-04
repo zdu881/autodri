@@ -26,6 +26,7 @@
 
 ```bash
 conda activate adri
+pip install -r driver_monitor/requirements.txt
 ```
 
 快速检查：
@@ -82,8 +83,7 @@ python gaze_onnx/experiments/aggregate_gaze_windows.py \
 python driver_monitor/hand_on_wheel.py \
   --video /path/to/input.mp4 \
   --output driver_monitor/output/hand_on_wheel_30s.mp4 \
-  --config GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py \
-  --weights GroundingDINO/weights/groundingdino_swint_ogc.pth \
+  --weights models/groundingdino_swint_ogc.pth \
   --roi 1900 660 3300 1400 \
   --decision-window-sec 30 \
   --state-csv driver_monitor/output/hand_on_wheel_30s_states.csv
@@ -135,4 +135,3 @@ git status --short
   - 通常是 CUDA/onnxruntime-gpu 动态库缺失，推理会回退 CPU。
 - 双 ROI 自动分配出现 `assignment_uncertain=1`
   - 先人工检查预览图，再决定该视频的 ROI 映射。
-
