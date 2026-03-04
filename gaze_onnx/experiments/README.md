@@ -256,3 +256,141 @@ python gaze_onnx/experiments/build_domains_csv_from_roi_manifest.py \
 
 4) 生成小样本标注包并进入 Web 标注  
 `create_multidomain_annotation_pack.py` + `web_label_tool.py`
+
+### 固定双 ROI（gaze/wheel）自动交换纠错
+
+当视频剪辑把两块区域位置放反时，可先做自动判别，再决定每个视频的
+`gaze_roi` 和 `wheel_roi`。
+
+固定候选区域（你当前设定）：
+- ROI-A: `0,0,1900,1100`
+- ROI-B: `1900,660,3300,1400`
+
+批量判别（仅分配，不跑推理）：
+
+```bash
+python gaze_onnx/experiments/assign_dual_roi.py \
+  --videos-csv gaze_onnx/experiments/manifests/p1_domains.csv \
+  --roi-a 0 0 1900 1100 \
+  --roi-b 1900 660 3300 1400 \
+  --base-gaze-roi A \
+  --samples 64 \
+  --assignment-csv gaze_onnx/experiments/output/p1_dual_roi_assignment.csv \
+  --preview-dir gaze_onnx/experiments/output/p1_dual_roi_previews
+```
+
+输出 CSV 关键字段：
+- `gaze_roi` / `wheel_roi`: 本视频最终分配结果
+- `swapped`: `1` 表示相对于基准映射（A->gaze）发生交换
+- `assignment_uncertain`: `1` 表示分配边界较近，建议人工复核
+- 默认即使存在坏视频也会继续并输出 CSV；若要严格失败可加 `--fail-on-error`
+
+若要直接串联运行 gaze + wheel 推理，可加：
+
+```bash
+  --run-infer \
+  --run-out-dir gaze_onnx/experiments/output/p1_dual_roi_runs
+```
+
+### 从双 ROI 分配结果构建任务清单
+
+`build_domains_csv_from_dual_assignment.py` 可把 `assign_dual_roi.py` 的结果转成
+`create_multidomain_annotation_pack.py` 可用的 domains.csv。
+
+```bash
+# 常规：gaze 用 gaze_roi
+python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
+  --assignment-csv data/natural_driving_p1/p1_dual_roi_assignment.csv \
+  --task gaze \
+  --domain-id p1 \
+  --samples-per-video 12 \
+  --samples-per-video-uncertain 20 \
+  --include-uncertain \
+  --require-status-ok \
+  --out-csv gaze_onnx/experiments/manifests/p1_gaze_domains.csv
+```
+
+如遇到该批次视频语义反向（即 `gaze_roi` 实际是 wheel 视角），可临时反向：
+
+```bash
+# 反向：gaze 用 wheel_roi
+python gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py \
+  --assignment-csv data/natural_driving_p1/p1_dual_roi_assignment.csv \
+  --task wheel \
+  --domain-id p1 \
+  --samples-per-video 12 \
+  --samples-per-video-uncertain 20 \
+  --include-uncertain \
+  --require-status-ok \
+  --out-csv gaze_onnx/experiments/manifests/p1_gaze_domains_inverted.csv
+```
+
+### 200-shot 小样本标注与微调
+
+1) 从大标注包抽 200 张（优先保留已标样本）：
+
+```bash
+python gaze_onnx/experiments/build_fewshot_pack.py \
+  --src-pack gaze_onnx/experiments/anno_p1_gaze_small_v3_invert \
+  --out-pack gaze_onnx/experiments/anno_p1_gaze_200shot_v1 \
+  --num-samples 200 \
+  --sample-mode by_video_uniform \
+  --keep-labeled
+```
+
+2) Web 标注：
+
+```bash
+python gaze_onnx/experiments/web_label_tool.py \
+  --samples-dir gaze_onnx/experiments/anno_p1_gaze_200shot_v1 \
+  --host 0.0.0.0 \
+  --port 8001
+```
+
+3) 构建“驾驶状态三类”训练集（过滤 Other/Unknown）：
+
+```bash
+python gaze_onnx/experiments/prepare_cls_dataset_from_pack.py \
+  --samples-dir gaze_onnx/experiments/anno_p1_gaze_200shot_v1 \
+  --out-dir gaze_onnx/experiments/cls_dataset_p1_200shot_driveonly_v1 \
+  --split-mode random \
+  --val-ratio 0.2 \
+  --labels Forward Non-Forward In-Car \
+  --augment-minority \
+  --target-train-map "Forward=100,In-Car=100,Non-Forward=100" \
+  --copy-mode hardlink
+```
+
+4) 基于已有模型微调：
+
+```bash
+conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
+  --data gaze_onnx/experiments/cls_dataset_p1_200shot_driveonly_v1 \
+  --mode train \
+  --model runs/classify/gaze_onnx/experiments/runs_cls/gaze_final_two_domain_genv2_cpu/weights/best.pt \
+  --epochs 60 \
+  --batch 16 \
+  --device 1 \
+  --aug-preset genv3 \
+  --name gaze_p1_200shot_driveonly_ft_v1_gpu1
+```
+
+5) 导出 ONNX：
+
+```bash
+conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
+  --data gaze_onnx/experiments/cls_dataset_p1_200shot_driveonly_v1 \
+  --mode export \
+  --weights runs/classify/gaze_onnx/experiments/runs_cls/gaze_p1_200shot_driveonly_ft_v1_gpu1/weights/best.pt
+```
+
+### 20s 事件级汇总（研究口径）
+
+将帧级 CSV 聚合为 20 秒窗口，多数投票并忽略 Other/Unknown：
+
+```bash
+python gaze_onnx/experiments/aggregate_gaze_windows.py \
+  --csv data/natural_driving_p1/infer_onevideo/p1_1031_085825_gaze_full.csv \
+  --out-csv data/natural_driving_p1/infer_onevideo/p1_1031_085825_gaze_full.event20s.csv \
+  --window-sec 20
+```

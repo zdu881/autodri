@@ -194,6 +194,33 @@ python gaze_onnx/experiments/web_label_tool.py \
 2. 训练（`train_gaze_cls.py`）
 3. 跨域评估（`cross_domain_eval.py`，帧级 + 事件级）
 
+---
+
+## 8) 双区域视频的自动纠错（gaze/wheel ROI 交换）
+
+如果剪辑人员把两个窗口位置放反，可用固定双 ROI 自动分配脚本先做纠错。
+
+固定候选区域：
+- ROI-A: `0,0,1900,1100`
+- ROI-B: `1900,660,3300,1400`
+
+```bash
+python gaze_onnx/experiments/assign_dual_roi.py \
+  --videos-csv gaze_onnx/experiments/manifests/p1_domains.csv \
+  --roi-a 0 0 1900 1100 \
+  --roi-b 1900 660 3300 1400 \
+  --base-gaze-roi A \
+  --samples 64 \
+  --assignment-csv gaze_onnx/experiments/output/p1_dual_roi_assignment.csv \
+  --preview-dir gaze_onnx/experiments/output/p1_dual_roi_previews
+```
+
+关键输出字段：
+- `gaze_roi` / `wheel_roi`：当前视频最终使用的 ROI
+- `swapped=1`：说明该视频相对于默认映射（A->gaze）发生了交换
+- `assignment_uncertain=1`：低置信，建议人工快速复核预览图
+- 默认会跳过坏视频并继续；若希望出现错误即返回非 0，可加 `--fail-on-error`
+
 ### 推荐目录约定（按参与者）
 
 1. 原始视频：`data/natural_driving/pX/剪辑好的视频/`

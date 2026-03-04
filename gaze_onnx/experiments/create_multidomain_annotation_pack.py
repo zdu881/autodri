@@ -22,6 +22,7 @@ Example:
 import argparse
 import csv
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
@@ -44,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--samples-per-domain", type=int, default=500)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--jpeg-quality", type=int, default=95)
+    p.add_argument(
+        "--read-mode",
+        choices=["seek", "scan"],
+        default="seek",
+        help="seek: random-access sampled frames (fast for sparse picks); scan: sequential scan",
+    )
     return p.parse_args()
 
 
@@ -114,6 +121,14 @@ def clamp_roi(roi: Tuple[int, int, int, int], w: int, h: int) -> Tuple[int, int,
     return x1, y1, x2, y2
 
 
+def _safe_token(text: str, limit: int = 48) -> str:
+    t = re.sub(r"[^A-Za-z0-9._-]+", "_", str(text))
+    t = t.strip("._-")
+    if not t:
+        t = "v"
+    return t[:limit]
+
+
 def main() -> None:
     args = parse_args()
     rng = random.Random(args.seed)
@@ -129,6 +144,7 @@ def main() -> None:
 
     manifest_rows = []
     total_saved = 0
+    global_idx = 0
 
     for item in domains:
         cap = cv2.VideoCapture(item.video)
@@ -143,59 +159,82 @@ def main() -> None:
         roi = clamp_roi(item.roi, w, h)
 
         picks = sample_indices(total, item.n_samples, rng)
-        target_set = set(picks)
         saved = 0
-        frame_idx = -1
+        video_tag = _safe_token(Path(item.video).stem, limit=40)
+        video_folder_tag = _safe_token(Path(item.video).parent.name, limit=24)
 
-        while True:
-            ok = cap.grab()
-            if not ok:
-                break
-            frame_idx += 1
-            if frame_idx not in target_set:
-                continue
-
-            ok, frame = cap.retrieve()
-            if not ok or frame is None:
-                continue
-
+        def handle_frame(frame_idx: int, frame) -> None:
+            nonlocal saved, total_saved, global_idx
+            if frame is None:
+                return
             x1, y1, x2, y2 = roi
             crop = frame[y1:y2, x1:x2]
             if crop.size == 0:
-                continue
+                return
 
             ts = (frame_idx / fps) if fps > 0 else 0.0
-            img_name = f"{item.domain_id}_f{frame_idx:06d}_t{ts:08.3f}.jpg"
+            img_name = (
+                f"{item.domain_id}_{video_folder_tag}_{video_tag}_"
+                f"f{frame_idx:06d}_s{global_idx:07d}.jpg"
+            )
             img_path = img_dir / img_name
-            cv2.imwrite(str(img_path), crop, [int(cv2.IMWRITE_JPEG_QUALITY), int(args.jpeg_quality)])
+            ok_write = cv2.imwrite(
+                str(img_path), crop, [int(cv2.IMWRITE_JPEG_QUALITY), int(args.jpeg_quality)]
+            )
+            if not ok_write:
+                return
 
-            # Columns keep compatibility with existing web_label_tool.py.
-            manifest_rows.append({
-                "img": f"images/{img_name}",
-                "FrameID": str(frame_idx),
-                "Timestamp": f"{ts:.3f}",
-                "Pred_Class": "",
-                "Raw_Pitch": "",
-                "Raw_Yaw": "",
-                "Smooth_Pitch": "",
-                "Smooth_Yaw": "",
-                "Ref_Pitch": "",
-                "Ref_Yaw": "",
-                "Delta_Pitch": "",
-                "Delta_Yaw": "",
-                "Domain": item.domain_id,
-                "Video": item.video,
-                "ROI_X1": str(roi[0]),
-                "ROI_Y1": str(roi[1]),
-                "ROI_X2": str(roi[2]),
-                "ROI_Y2": str(roi[3]),
-            })
+            manifest_rows.append(
+                {
+                    "img": f"images/{img_name}",
+                    "FrameID": str(frame_idx),
+                    "Timestamp": f"{ts:.3f}",
+                    "Pred_Class": "",
+                    "Raw_Pitch": "",
+                    "Raw_Yaw": "",
+                    "Smooth_Pitch": "",
+                    "Smooth_Yaw": "",
+                    "Ref_Pitch": "",
+                    "Ref_Yaw": "",
+                    "Delta_Pitch": "",
+                    "Delta_Yaw": "",
+                    "Domain": item.domain_id,
+                    "Video": item.video,
+                    "ROI_X1": str(roi[0]),
+                    "ROI_Y1": str(roi[1]),
+                    "ROI_X2": str(roi[2]),
+                    "ROI_Y2": str(roi[3]),
+                }
+            )
             saved += 1
-            if saved >= len(target_set):
-                break
+            total_saved += 1
+            global_idx += 1
+
+        if args.read_mode == "seek":
+            for frame_idx in picks:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                handle_frame(frame_idx, frame)
+        else:
+            target_set = set(picks)
+            frame_idx = -1
+            while True:
+                ok = cap.grab()
+                if not ok:
+                    break
+                frame_idx += 1
+                if frame_idx not in target_set:
+                    continue
+                ok, frame = cap.retrieve()
+                if not ok:
+                    continue
+                handle_frame(frame_idx, frame)
+                if saved >= len(target_set):
+                    break
 
         cap.release()
-        total_saved += saved
         print(f"[OK] {item.domain_id}: saved={saved}  video={item.video}")
 
     manifest_rows.sort(key=lambda r: (r["Domain"], int(float(r["FrameID"]))))
