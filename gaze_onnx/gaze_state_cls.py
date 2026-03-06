@@ -460,6 +460,10 @@ def parse_args() -> argparse.Namespace:
                    metavar=("X1", "Y1", "X2", "Y2"))
     p.add_argument("--out-video", default="gaze_output_cls.mp4", help="Output video path")
     p.add_argument("--csv", default="gaze_output_cls.csv", help="Output CSV path")
+    p.add_argument("--start-sec", type=float, default=0.0,
+                   help="Start time in seconds for segment inference (default: 0, from video start)")
+    p.add_argument("--duration-sec", type=float, default=0.0,
+                   help="Segment duration in seconds (default: 0, process to video end)")
 
     p.add_argument("--scrfd-input", nargs=2, type=int, default=[640, 640], metavar=("W", "H"))
     p.add_argument("--face-conf", type=float, default=0.55, help="SCRFD confidence threshold")
@@ -525,6 +529,36 @@ def main() -> None:
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+
+    start_sec = max(0.0, float(args.start_sec))
+    duration_sec = max(0.0, float(args.duration_sec))
+    start_frame = int(round(start_sec * fps))
+    if total_frames > 0 and start_frame >= total_frames:
+        raise ValueError(
+            f"--start-sec ({start_sec:.3f}s) exceeds video duration "
+            f"({total_frames / max(1e-6, fps):.3f}s)"
+        )
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    target_frames_by_duration = 0
+    if duration_sec > 0:
+        target_frames_by_duration = max(1, int(math.ceil(duration_sec * fps)))
+
+    max_proc_frames = 0
+    if total_frames > 0:
+        remain_from_start = max(0, total_frames - start_frame)
+        max_proc_frames = remain_from_start
+        if target_frames_by_duration > 0:
+            max_proc_frames = min(max_proc_frames, target_frames_by_duration)
+    elif target_frames_by_duration > 0:
+        max_proc_frames = target_frames_by_duration
+    if args.max_frames and int(args.max_frames) > 0:
+        if max_proc_frames > 0:
+            max_proc_frames = min(max_proc_frames, int(args.max_frames))
+        else:
+            max_proc_frames = int(args.max_frames)
 
     x1, y1, x2, y2 = map(int, args.roi)
     x1 = max(0, min(x1, width - 1))
@@ -573,11 +607,11 @@ def main() -> None:
         "Presence_Candidate", "Presence_State",
         "Cls_Forward", "Cls_InCar", "Cls_NonForward", "Cls_Other",
         "Raw_Class", "Confidence", "Base_Class", "Gaze_Class",
+        "Video_Timestamp", "Video_FrameID",
     ])
 
     frame_id = 0
     start_t = time.time()
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
     class_counter: Counter = Counter()
     prev_face_center: Optional[Tuple[float, float]] = None
@@ -594,6 +628,8 @@ def main() -> None:
     )
 
     while True:
+        if max_proc_frames and frame_id >= max_proc_frames:
+            break
         ok, frame = cap.read()
         if not ok:
             break
@@ -602,8 +638,11 @@ def main() -> None:
         if roi.size == 0:
             break
 
+        segment_frame_id = frame_id
+        video_frame_id = start_frame + frame_id
         proc = apply_clahe_bgr(roi) if args.clahe else roi
-        ts = frame_id / fps
+        ts = segment_frame_id / fps
+        video_ts = video_frame_id / fps
 
         face: Optional[Face] = None
         face_crop: Optional[np.ndarray] = None
@@ -664,7 +703,7 @@ def main() -> None:
             if args.write_when_other != "skip":
                 csv_w.writerow([
                     f"{ts:.3f}",
-                    frame_id,
+                    segment_frame_id,
                     fmt_float(face_score),
                     fmt_float(face_ratio, ndigits=6),
                     int(bool(presence_candidate)),
@@ -673,6 +712,8 @@ def main() -> None:
                     "", "",
                     "",
                     final_class,
+                    f"{video_ts:.3f}",
+                    video_frame_id,
                 ])
 
             if not args.no_overlay:
@@ -688,7 +729,8 @@ def main() -> None:
                 draw_text_panel(
                     frame,
                     [
-                        f"Frame={frame_id}  t={ts:.2f}s",
+                        f"Frame={segment_frame_id}  t={ts:.2f}s",
+                        f"VideoFrame={video_frame_id}  video_t={video_ts:.2f}s",
                         "Presence: OUT (Other)",
                         presence_reason or "Absent candidate",
                     ],
@@ -712,8 +754,6 @@ def main() -> None:
                 cy_ema.reset()
 
             frame_id += 1
-            if args.max_frames and frame_id >= args.max_frames:
-                break
             continue
 
         if has_valid_face and face_crop is not None:
@@ -750,7 +790,7 @@ def main() -> None:
 
         csv_w.writerow([
             f"{ts:.3f}",
-            frame_id,
+            segment_frame_id,
             fmt_float(face_score),
             fmt_float(face_ratio, ndigits=6),
             int(bool(presence_candidate)),
@@ -763,6 +803,8 @@ def main() -> None:
             fmt_float(confidence),
             base_class,
             final_class,
+            f"{video_ts:.3f}",
+            video_frame_id,
         ])
 
         if not args.no_overlay:
@@ -801,7 +843,8 @@ def main() -> None:
             draw_text_panel(
                 frame,
                 [
-                    f"Frame={frame_id}  t={ts:.2f}s",
+                    f"Frame={segment_frame_id}  t={ts:.2f}s",
+                    f"VideoFrame={video_frame_id}  video_t={video_ts:.2f}s",
                     "Presence: IN",
                     score_line,
                     raw_line,
@@ -828,15 +871,23 @@ def main() -> None:
             now = time.time()
             dt = max(1e-6, now - start_t)
             proc_fps = frame_id / dt
-            if total_frames > 0:
-                remain = max(0, total_frames - frame_id)
+            if max_proc_frames > 0:
+                remain = max(0, max_proc_frames - frame_id)
                 eta_s = remain / max(1e-6, proc_fps)
-                print(f"[{frame_id}/{total_frames}] proc_fps={proc_fps:.2f} elapsed={dt/60:.1f}m ETA={eta_s/60:.1f}m")
+                print(
+                    f"[{frame_id}/{max_proc_frames}] proc_fps={proc_fps:.2f} "
+                    f"elapsed={dt/60:.1f}m ETA={eta_s/60:.1f}m"
+                )
+            elif total_frames > 0:
+                done_video_frame = start_frame + frame_id
+                remain = max(0, total_frames - done_video_frame)
+                eta_s = remain / max(1e-6, proc_fps)
+                print(
+                    f"[seg={frame_id}, video={done_video_frame}/{total_frames}] "
+                    f"proc_fps={proc_fps:.2f} elapsed={dt/60:.1f}m ETA={eta_s/60:.1f}m"
+                )
             else:
                 print(f"[{frame_id}] proc_fps={proc_fps:.2f} elapsed={dt/60:.1f}m")
-
-        if args.max_frames and frame_id >= args.max_frames:
-            break
 
     csv_f.close()
     cap.release()
@@ -848,7 +899,12 @@ def main() -> None:
         "out_video": args.out_video,
         "csv": args.csv,
         "model": args.cls_model,
+        "start_sec": float(start_sec),
+        "duration_sec": float(duration_sec),
+        "start_frame": int(start_frame),
+        "max_proc_frames": int(max_proc_frames),
         "total_frames_written": int(frame_id),
+        "end_frame_exclusive": int(start_frame + frame_id),
         "class_counts": dict(class_counter),
         "class_percent": {k: (v / total * 100.0 if total else 0.0) for k, v in class_counter.items()},
     }

@@ -7,6 +7,10 @@
 - 新域少样本快速适配（few-shot）
 - `hand-on-wheel` 的时间窗口稳态判别（用于降低逐帧抖动）
 
+给标注同学（非研发）：
+- 直接看 `docs/annotation_quickstart.md`
+- 不需要看训练和评估章节
+
 ---
 
 ## 1. 仓库模块
@@ -71,6 +75,19 @@ python gaze_onnx/gaze_state_cls.py \
   --csv gaze_onnx/output/gaze_demo.csv
 ```
 
+只跑视频中的一个 20s 片段（例如从第 120s 开始）：
+
+```bash
+python gaze_onnx/gaze_state_cls.py \
+  --video /path/to/input.mp4 \
+  --start-sec 120 \
+  --duration-sec 20 \
+  --roi 1900 660 3300 1400 \
+  --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
+  --out-video gaze_onnx/output/gaze_demo_seg_120_20.mp4 \
+  --csv gaze_onnx/output/gaze_demo_seg_120_20.csv
+```
+
 将帧级结果聚合为 20s 事件级：
 
 ```bash
@@ -121,6 +138,7 @@ python driver_monitor/analyze_state_csv.py \
 
 ## 4. 关键文档
 
+- 标注员快速上手：`docs/annotation_quickstart.md`
 - 总体标注与批量流程：`docs/annotation_workflow.md`
 - 泛化数据方案：`docs/generalization_datasets.md`
 - Poster 思路草稿：`docs/poster_plan.md`

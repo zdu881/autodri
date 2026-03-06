@@ -251,6 +251,21 @@ conda run -n adri python gaze_onnx/gaze_state_cls.py \
   --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.csv
 ```
 
+若只研究视频中的某一段（例如从 600s 开始截取 20s）：
+
+```bash
+conda run -n adri python gaze_onnx/gaze_state_cls.py \
+  --video "data/natural_driving_p1/p1_剪辑好的视频/第三批/10.31 085825/12月13日(1).mp4" \
+  --start-sec 600 \
+  --duration-sec 20 \
+  --roi 1900 660 3300 1400 \
+  --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
+  --out-video data/natural_driving_p1/infer_onevideo/p1_demo_gaze_seg_600_20.mp4 \
+  --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_seg_600_20.csv
+```
+
+说明：CSV 中 `Timestamp/FrameID` 为片段内相对值；`Video_Timestamp/Video_FrameID` 为原视频绝对位置。
+
 ```bash
 python gaze_onnx/experiments/aggregate_gaze_windows.py \
   --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.csv \
@@ -325,7 +340,7 @@ python driver_monitor/analyze_state_csv.py \
 - `Forward`：主要注视前方道路
 - `Non-Forward`：明显偏离前方（侧看、低头等）
 - `In-Car`：看车内区域（中控/仪表/车内后视镜等）
-- `Other`：不在驾驶位、无有效人脸、无法判别、非目标驾驶员
+- `Other`：不在驾驶位、无有效人脸、无法判别、非目标驾驶员、ROI 对不上导致的无人区域
 - `Unknown`：仅用于标注中间态，不建议作为训练类
 
 驾驶状态三类训练时，通常过滤 `Other/Unknown`。
