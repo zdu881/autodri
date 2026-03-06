@@ -7,10 +7,31 @@ Driver-side monitoring scripts:
 
 ## Install (VCS)
 
-Install dependencies (including GroundingDINO from GitHub VCS):
+Install dependencies (including GroundingDINO from GitHub VCS, pinned commit):
 
 ```bash
-pip install -r driver_monitor/requirements.txt
+python -m pip install -r driver_monitor/requirements.txt
+```
+
+If you need to refresh/rebuild the VCS package:
+
+```bash
+python -m pip install --upgrade --force-reinstall -r driver_monitor/requirements.txt
+```
+
+`driver_monitor/requirements.txt` currently pins:
+- `groundingdino @ git+https://github.com/IDEA-Research/GroundingDINO.git@856dde20aee659246248e20734ef9ba5214f5e44`
+
+To switch version, edit that line to another commit/tag and reinstall.
+
+Verify import path:
+
+```bash
+python - <<'PY'
+import groundingdino
+from pathlib import Path
+print(Path(groundingdino.__file__).resolve())
+PY
 ```
 
 Model weights are still required separately. Recommended local path:

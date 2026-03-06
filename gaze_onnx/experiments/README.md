@@ -280,6 +280,11 @@ python gaze_onnx/experiments/cross_domain_eval.py \
 ## 6. Hand-on-wheel 项目流程（30s 稳定状态）
 
 手放方向盘项目建议采用“帧级判定 + 窗口多数投票”的同构思路，减少状态抖动。
+依赖安装采用 VCS：
+
+```bash
+python -m pip install -r driver_monitor/requirements.txt
+```
 
 基础推理：
 

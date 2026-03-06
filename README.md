@@ -26,7 +26,26 @@
 
 ```bash
 conda activate adri
-pip install -r driver_monitor/requirements.txt
+python -m pip install -r driver_monitor/requirements.txt
+```
+
+VCS 依赖说明（GroundingDINO）：
+- `driver_monitor/requirements.txt` 使用 VCS 方式安装并固定到 commit。
+- 不再要求本地克隆 `GroundingDINO/` 代码目录。
+- 若已安装旧版本，可强制重装：
+
+```bash
+python -m pip install --upgrade --force-reinstall -r driver_monitor/requirements.txt
+```
+
+快速确认安装来源：
+
+```bash
+python - <<'PY'
+import groundingdino
+from pathlib import Path
+print(Path(groundingdino.__file__).resolve())
+PY
 ```
 
 快速检查：
