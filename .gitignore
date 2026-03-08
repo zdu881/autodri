@@ -20,7 +20,9 @@ l2cs.onnx.tar.xz
 6月1日.mp4
 12月23日(1).mp4
 yolo26n.pt
+yolo11n.pt
 yolov8n-cls.pt
+自然驾驶_视频标注情况 - *.csv
 data/
 
 # Training/runtime outputs

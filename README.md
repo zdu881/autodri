@@ -134,6 +134,32 @@ python driver_monitor/analyze_state_csv.py \
   --sweep-out-csv driver_monitor/output/window_sweep.csv
 ```
 
+`hand_on_wheel.py` 现支持双后端：
+- `--detector groundingdino`（基线）
+- `--detector yolo --yolo-model /path/to/best.pt`（轻量加速）
+
+为后续小模型加速导出检测框伪标签：
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --roi 1900 660 3300 1400 \
+  --weights models/groundingdino_swint_ogc.pth \
+  --no-video \
+  --det-csv driver_monitor/output/hand_on_wheel_dets.csv
+```
+
+### 3.4 p1 自动驾驶片段批处理（20s）
+
+当你有 `自然驾驶_视频标注情况 - p1(1).csv` 时，推荐直接跑这条链路：
+
+1. 解析时间段并生成 20s 窗口（自动去掉每段前后 60s）
+2. 生成 segment 级推理计划
+3. 批量推理 gaze + wheel（建议 `--no-video`，只留 CSV）
+4. 汇总窗口指标（允许部分片段尚未推理完成）
+
+完整命令见：`gaze_onnx/experiments/README.md` 的 `4.13 p1 自动驾驶片段批处理（20s 窗口指标）`。
+
 ---
 
 ## 4. 关键文档

@@ -4,7 +4,7 @@ import os
 from collections import Counter, deque
 from importlib.util import find_spec
 from pathlib import Path
-from typing import List, Dict, Any, Deque, Tuple
+from typing import List, Dict, Any, Deque, Tuple, Optional
 
 import cv2
 import numpy as np
@@ -136,6 +136,68 @@ def build_detections(detections) -> List[Dict[str, Any]]:
             }
         )
     return results
+
+
+def parse_class_id_set(spec: str) -> set:
+    s = (spec or "").strip()
+    if not s:
+        return set()
+    out = set()
+    for tok in s.split(","):
+        t = tok.strip()
+        if not t:
+            continue
+        out.add(int(t))
+    return out
+
+
+def build_detections_from_yolo(
+    frame_crop: np.ndarray,
+    model: Any,
+    device: str,
+    imgsz: int,
+    conf: float,
+    iou: float,
+    hand_class_ids: set,
+    wheel_class_ids: set,
+    roi_x1: int,
+    roi_y1: int,
+) -> List[Dict[str, Any]]:
+    if frame_crop.size == 0:
+        return []
+    preds = model.predict(
+        source=frame_crop,
+        imgsz=int(imgsz),
+        conf=float(conf),
+        iou=float(iou),
+        device=device,
+        verbose=False,
+    )
+    if not preds:
+        return []
+    p0 = preds[0]
+    if p0.boxes is None or len(p0.boxes) == 0:
+        return []
+    xyxy = p0.boxes.xyxy.detach().cpu().numpy()
+    confs = p0.boxes.conf.detach().cpu().numpy()
+    clss = p0.boxes.cls.detach().cpu().numpy().astype(int)
+    out: List[Dict[str, Any]] = []
+    for box, score, raw_cid in zip(xyxy, confs, clss):
+        if raw_cid in hand_class_ids:
+            cid = 0
+        elif raw_cid in wheel_class_ids:
+            cid = 1
+        else:
+            continue
+        x1, y1, x2, y2 = [int(round(float(v))) for v in box.tolist()]
+        out.append(
+            {
+                "box": [x1 + int(roi_x1), y1 + int(roi_y1), x2 + int(roi_x1), y2 + int(roi_y1)],
+                "confidence": float(score),
+                "class_id": int(cid),
+            }
+        )
+    return out
 
 
 def compute_iou(hand_boxes: np.ndarray, wheel_boxes: np.ndarray) -> float:
@@ -299,7 +361,7 @@ def select_roi_interactive(cap: cv2.VideoCapture, artifacts_dir: str) -> tuple:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Detect hand on steering wheel with GroundingDINO")
+    parser = argparse.ArgumentParser(description="Detect hand on steering wheel with GroundingDINO or YOLO")
     parser.add_argument(
         "--video",
         required=True,
@@ -309,6 +371,29 @@ def main() -> None:
         "--output",
         default="driver_monitor/output/hand_on_wheel.mp4",
         help="Path to output video",
+    )
+    parser.add_argument(
+        "--no-video",
+        action="store_true",
+        help="Disable mp4 writing and only save state CSV.",
+    )
+    parser.add_argument(
+        "--start-sec",
+        type=float,
+        default=0.0,
+        help="Start time in seconds for segment inference (default: 0, from video start).",
+    )
+    parser.add_argument(
+        "--duration-sec",
+        type=float,
+        default=0.0,
+        help="Segment duration in seconds (default: 0, process to video end).",
+    )
+    parser.add_argument(
+        "--detector",
+        choices=["groundingdino", "yolo"],
+        default="groundingdino",
+        help="Detection backend for hand/wheel boxes.",
     )
     parser.add_argument(
         "--artifacts-dir",
@@ -330,6 +415,24 @@ def main() -> None:
             "Path to GroundingDINO weights. "
             "If omitted, auto-search models/groundingdino_swint_ogc.pth."
         ),
+    )
+    parser.add_argument(
+        "--yolo-model",
+        default="",
+        help="YOLO model path (required when --detector yolo).",
+    )
+    parser.add_argument("--yolo-imgsz", type=int, default=640)
+    parser.add_argument("--yolo-conf", type=float, default=0.25)
+    parser.add_argument("--yolo-iou", type=float, default=0.45)
+    parser.add_argument(
+        "--yolo-hand-class-ids",
+        default="0",
+        help="Comma-separated YOLO class ids mapped to 'hand'.",
+    )
+    parser.add_argument(
+        "--yolo-wheel-class-ids",
+        default="1",
+        help="Comma-separated YOLO class ids mapped to 'steering wheel'.",
     )
     parser.add_argument("--box-threshold", type=float, default=0.25)
     parser.add_argument("--text-threshold", type=float, default=0.25)
@@ -393,6 +496,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--det-csv",
+        default="",
+        help=(
+            "Optional path to save sampled-frame detections (boxes/classes/conf) "
+            "for downstream YOLO dataset building."
+        ),
+    )
+    parser.add_argument(
         "--max-seconds",
         type=float,
         default=0.0,
@@ -418,7 +529,8 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+    if not args.no_video:
+        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
     os.makedirs(args.artifacts_dir, exist_ok=True)
 
     cap = cv2.VideoCapture(args.video)
@@ -441,6 +553,27 @@ def main() -> None:
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+    start_sec = max(0.0, float(args.start_sec))
+    duration_sec = max(0.0, float(args.duration_sec))
+    start_frame = int(round(start_sec * fps))
+    if total_frames > 0 and start_frame >= total_frames:
+        raise ValueError(
+            f"--start-sec ({start_sec:.3f}s) exceeds video duration "
+            f"({total_frames / max(1e-6, fps):.3f}s)"
+        )
+    if start_frame > 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    max_proc_frames = 0
+    if duration_sec > 0:
+        max_proc_frames = max(1, int(round(duration_sec * fps)))
+    if total_frames > 0:
+        remain_from_start = max(0, total_frames - start_frame)
+        if max_proc_frames > 0:
+            max_proc_frames = min(max_proc_frames, remain_from_start)
+        else:
+            max_proc_frames = remain_from_start
+
     if args.sample_fps <= 0:
         stride = 1
     else:
@@ -451,26 +584,61 @@ def main() -> None:
     if iou_on_threshold < iou_off_threshold:
         raise ValueError("--iou-on-threshold should be >= --iou-off-threshold")
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(args.output, fourcc, fps, (width, height))
+    writer = None
+    if not args.no_video:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(args.output, fourcc, fps, (width, height))
+        if not writer.isOpened():
+            raise RuntimeError(f"Failed to open writer: {args.output}")
 
-    resolved_config = resolve_groundingdino_config(args.config)
-    resolved_weights = resolve_groundingdino_weights(args.weights)
-    print(f"Using GroundingDINO config: {resolved_config}")
-    print(f"Using GroundingDINO weights: {resolved_weights}")
+    detector = str(args.detector).strip().lower()
+    if detector == "groundingdino":
+        resolved_config = resolve_groundingdino_config(args.config)
+        resolved_weights = resolve_groundingdino_weights(args.weights)
+        print(f"Using detector: groundingdino")
+        print(f"Using GroundingDINO config: {resolved_config}")
+        print(f"Using GroundingDINO weights: {resolved_weights}")
+        try:
+            from groundingdino.util.inference import Model
+        except ImportError as exc:
+            raise ImportError(
+                "groundingdino is not installed. Run: pip install -r driver_monitor/requirements.txt"
+            ) from exc
 
-    try:
-        from groundingdino.util.inference import Model
-    except ImportError as exc:
-        raise ImportError(
-            "groundingdino is not installed. Run: pip install -r driver_monitor/requirements.txt"
-        ) from exc
-
-    model = Model(
-        model_config_path=resolved_config,
-        model_checkpoint_path=resolved_weights,
-        device=args.device,
-    )
+        model = Model(
+            model_config_path=resolved_config,
+            model_checkpoint_path=resolved_weights,
+            device=args.device,
+        )
+        yolo_model = None
+        yolo_hand_class_ids = set()
+        yolo_wheel_class_ids = set()
+    elif detector == "yolo":
+        yolo_path = str(args.yolo_model or "").strip()
+        if not yolo_path:
+            raise ValueError("--yolo-model is required when --detector yolo")
+        if not Path(yolo_path).exists():
+            raise FileNotFoundError(yolo_path)
+        try:
+            from ultralytics import YOLO
+        except ImportError as exc:
+            raise ImportError(
+                "ultralytics is not installed. Install it in the current environment first."
+            ) from exc
+        yolo_hand_class_ids = parse_class_id_set(args.yolo_hand_class_ids)
+        yolo_wheel_class_ids = parse_class_id_set(args.yolo_wheel_class_ids)
+        if not yolo_hand_class_ids or not yolo_wheel_class_ids:
+            raise ValueError("YOLO hand/wheel class-id sets must be non-empty")
+        yolo_model = YOLO(yolo_path)
+        model = None
+        print(f"Using detector: yolo")
+        print(f"Using YOLO model: {yolo_path}")
+        print(
+            f"YOLO class mapping: hand={sorted(yolo_hand_class_ids)} "
+            f"wheel={sorted(yolo_wheel_class_ids)}"
+        )
+    else:
+        raise ValueError(f"Unsupported --detector: {args.detector}")
 
     frame_idx = 0
     last_detections: List[Dict[str, Any]] = []
@@ -494,6 +662,8 @@ def main() -> None:
                 "frame",
                 "time_sec",
                 "time_text",
+                "video_time_sec",
+                "video_frame",
                 "raw_state",
                 "stable_state",
                 "raw_hand_on_wheel",
@@ -509,48 +679,148 @@ def main() -> None:
             ]
         )
 
+    det_csv_file = None
+    det_csv_writer = None
+    if args.det_csv:
+        os.makedirs(os.path.dirname(args.det_csv) or ".", exist_ok=True)
+        det_csv_file = open(args.det_csv, "w", newline="", encoding="utf-8")
+        det_csv_writer = csv.writer(det_csv_file)
+        det_csv_writer.writerow(
+            [
+                "video_path",
+                "frame",
+                "video_frame",
+                "time_sec",
+                "video_time_sec",
+                "roi_x1",
+                "roi_y1",
+                "roi_x2",
+                "roi_y2",
+                "sampled",
+                "num_dets",
+                "det_index",
+                "class_id",
+                "class_name",
+                "confidence",
+                "x1",
+                "y1",
+                "x2",
+                "y2",
+            ]
+        )
+
     while True:
+        if max_proc_frames > 0 and frame_idx >= max_proc_frames:
+            break
         ret, frame = cap.read()
         if not ret:
             break
         current_time_sec = frame_idx / fps
+        video_time_sec = start_sec + current_time_sec
+        video_frame_idx = start_frame + frame_idx
         if args.max_seconds > 0 and current_time_sec >= args.max_seconds:
             break
 
         if frame_idx % stride == 0:
             # Crop image for prediction
             frame_crop = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-            
+            filtered: List[Dict[str, Any]] = []
             # Skip empty crops (just in case)
-            if frame_crop.size == 0:
-                detections = None
-            else:
-                detections = model.predict_with_classes(
-                    image=frame_crop,
-                    classes=PROMPT_LIST,
-                    box_threshold=args.box_threshold,
-                    text_threshold=args.text_threshold,
-                )
+            if frame_crop.size > 0:
+                if detector == "groundingdino":
+                    detections = model.predict_with_classes(
+                        image=frame_crop,
+                        classes=PROMPT_LIST,
+                        box_threshold=args.box_threshold,
+                        text_threshold=args.text_threshold,
+                    )
 
-                # Map raw prompt indices to logical class indices
-                if detections.class_id is not None:
-                    new_class_ids = []
-                    for cid in detections.class_id:
-                        if cid is not None and 0 <= cid < len(PROMPT_TO_CLASS):
-                            new_class_ids.append(PROMPT_TO_CLASS[cid])
-                        else:
-                            new_class_ids.append(None)
-                    detections.class_id = np.array(new_class_ids)
+                    # Map raw prompt indices to logical class indices
+                    if detections.class_id is not None:
+                        new_class_ids = []
+                        for cid in detections.class_id:
+                            if cid is not None and 0 <= cid < len(PROMPT_TO_CLASS):
+                                new_class_ids.append(PROMPT_TO_CLASS[cid])
+                            else:
+                                new_class_ids.append(None)
+                        detections.class_id = np.array(new_class_ids)
 
-                # Adjust boxes coordinates: Add ROI offset
-                if detections.xyxy is not None and len(detections.xyxy) > 0:
-                    detections.xyxy += np.array([roi_x1, roi_y1, roi_x1, roi_y1])
-
-            filtered = build_detections(detections) if detections else []
+                    # Adjust boxes coordinates: Add ROI offset
+                    if detections.xyxy is not None and len(detections.xyxy) > 0:
+                        detections.xyxy += np.array([roi_x1, roi_y1, roi_x1, roi_y1])
+                    filtered = build_detections(detections) if detections else []
+                else:
+                    filtered = build_detections_from_yolo(
+                        frame_crop=frame_crop,
+                        model=yolo_model,
+                        device=args.device,
+                        imgsz=int(args.yolo_imgsz),
+                        conf=float(args.yolo_conf),
+                        iou=float(args.yolo_iou),
+                        hand_class_ids=yolo_hand_class_ids,
+                        wheel_class_ids=yolo_wheel_class_ids,
+                        roi_x1=int(roi_x1),
+                        roi_y1=int(roi_y1),
+                    )
             hand_boxes = np.array([d["box"] for d in filtered if d["class_id"] == 0], dtype=np.float32)
             wheel_boxes = np.array([d["box"] for d in filtered if d["class_id"] == 1], dtype=np.float32)
             hand_confs = [d["confidence"] for d in filtered if d["class_id"] == 0]
             wheel_confs = [d["confidence"] for d in filtered if d["class_id"] == 1]
+
+            if det_csv_writer is not None:
+                num_dets = len(filtered)
+                if num_dets <= 0:
+                    det_csv_writer.writerow(
+                        [
+                            args.video,
+                            frame_idx,
+                            video_frame_idx,
+                            f"{current_time_sec:.6f}",
+                            f"{video_time_sec:.6f}",
+                            roi_x1,
+                            roi_y1,
+                            roi_x2,
+                            roi_y2,
+                            1,
+                            0,
+                            -1,
+                            -1,
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                        ]
+                    )
+                else:
+                    for di, det in enumerate(filtered):
+                        x1, y1, x2, y2 = [int(v) for v in det["box"]]
+                        cid = int(det["class_id"])
+                        cname = CLASSES[cid] if 0 <= cid < len(CLASSES) else f"class_{cid}"
+                        det_csv_writer.writerow(
+                            [
+                                args.video,
+                                frame_idx,
+                                video_frame_idx,
+                                f"{current_time_sec:.6f}",
+                                f"{video_time_sec:.6f}",
+                                roi_x1,
+                                roi_y1,
+                                roi_x2,
+                                roi_y2,
+                                1,
+                                num_dets,
+                                di,
+                                cid,
+                                cname,
+                                f"{float(det['confidence']):.6f}",
+                                x1,
+                                y1,
+                                x2,
+                                y2,
+                            ]
+                        )
 
             iou_max = compute_iou(hand_boxes, wheel_boxes)
             last_detections = filtered
@@ -594,6 +864,7 @@ def main() -> None:
         draw_detections(frame, last_detections)
 
         timestamp = format_timestamp(current_time_sec)
+        video_timestamp = format_timestamp(video_time_sec)
         if stable_state == STATE_ON:
             status_text = "HAND ON WHEEL"
             status_color = (0, 255, 0)
@@ -610,6 +881,16 @@ def main() -> None:
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            frame,
+            f"video_t={video_timestamp}",
+            (10, 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
             (255, 255, 255),
             2,
             cv2.LINE_AA,
@@ -652,7 +933,8 @@ def main() -> None:
             cv2.LINE_AA,
         )
 
-        writer.write(frame)
+        if writer is not None:
+            writer.write(frame)
 
         if state_csv_writer is not None:
             raw_num = STATE_TO_NUM[raw_state]
@@ -662,6 +944,8 @@ def main() -> None:
                     frame_idx,
                     f"{current_time_sec:.6f}",
                     timestamp,
+                    f"{video_time_sec:.6f}",
+                    video_frame_idx,
                     raw_state,
                     stable_state,
                     raw_num,
@@ -680,15 +964,25 @@ def main() -> None:
         frame_idx += 1
 
     cap.release()
-    writer.release()
+    if writer is not None:
+        writer.release()
     if state_csv_file is not None:
         state_csv_file.close()
+    if det_csv_file is not None:
+        det_csv_file.close()
 
     print("Done.")
-    print(f"Input frames: {total_frames}")
-    print(f"Output video: {args.output}")
+    print(f"Input frames (video total): {total_frames}")
+    print(f"Segment start_sec={start_sec:.3f} duration_sec={duration_sec:.3f}")
+    print(f"Processed frames: {frame_idx}")
+    if writer is not None:
+        print(f"Output video: {args.output}")
+    else:
+        print("Output video: <disabled by --no-video>")
     if args.state_csv:
         print(f"State CSV: {args.state_csv}")
+    if args.det_csv:
+        print(f"Det CSV: {args.det_csv}")
 
 
 if __name__ == "__main__":

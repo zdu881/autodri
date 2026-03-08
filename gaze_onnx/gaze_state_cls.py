@@ -390,7 +390,10 @@ class GazeClassifier:
     CLASS_NAMES_4 = ("Forward", "In-Car", "Non-Forward", "Other")
 
     def __init__(self, onnx_path: str, input_size: int = 224):
-        providers = ort.get_available_providers()
+        available = set(ort.get_available_providers())
+        providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in available]
+        if not providers:
+            providers = ["CPUExecutionProvider"]
         self.sess = ort.InferenceSession(onnx_path, providers=providers)
         self.input_name = self.sess.get_inputs()[0].name
         self.input_size = input_size
@@ -459,6 +462,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--roi", nargs=4, type=int, default=[950, 300, 1650, 690],
                    metavar=("X1", "Y1", "X2", "Y2"))
     p.add_argument("--out-video", default="gaze_output_cls.mp4", help="Output video path")
+    p.add_argument("--no-video", action="store_true", help="Disable mp4 writing and only save CSV/summary")
     p.add_argument("--csv", default="gaze_output_cls.csv", help="Output CSV path")
     p.add_argument("--start-sec", type=float, default=0.0,
                    help="Start time in seconds for segment inference (default: 0, from video start)")
@@ -594,10 +598,13 @@ def main() -> None:
             f"Invalid --class-bias length {raw_bias.size} for model with {classifier.num_classes} classes."
         )
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(args.out_video, fourcc, fps, (width, height))
-    if not writer.isOpened():
-        raise RuntimeError(f"Failed to open writer: {args.out_video}")
+    writer = None
+    if not args.no_video:
+        os.makedirs(os.path.dirname(args.out_video) or ".", exist_ok=True)
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(args.out_video, fourcc, fps, (width, height))
+        if not writer.isOpened():
+            raise RuntimeError(f"Failed to open writer: {args.out_video}")
 
     os.makedirs(os.path.dirname(args.csv) or ".", exist_ok=True)
     csv_f = open(args.csv, "w", newline="", encoding="utf-8")
@@ -748,7 +755,8 @@ def main() -> None:
                     cv2.LINE_AA,
                 )
 
-            writer.write(frame)
+            if writer is not None:
+                writer.write(frame)
             if not has_valid_face:
                 cx_ema.reset()
                 cy_ema.reset()
@@ -864,7 +872,8 @@ def main() -> None:
                 cv2.LINE_AA,
             )
 
-        writer.write(frame)
+        if writer is not None:
+            writer.write(frame)
         frame_id += 1
 
         if frame_id % 300 == 0:
@@ -891,12 +900,13 @@ def main() -> None:
 
     csv_f.close()
     cap.release()
-    writer.release()
+    if writer is not None:
+        writer.release()
 
     total = sum(class_counter.values())
     summary = {
         "video": args.video,
-        "out_video": args.out_video,
+        "out_video": "" if args.no_video else args.out_video,
         "csv": args.csv,
         "model": args.cls_model,
         "start_sec": float(start_sec),
@@ -919,7 +929,10 @@ def main() -> None:
     if total:
         pct = {k: round(v / total * 100.0, 2) for k, v in class_counter.items()}
         print("Percent:", pct)
-    print(f"Video: {args.out_video}")
+    if writer is not None:
+        print(f"Video: {args.out_video}")
+    else:
+        print("Video: <disabled by --no-video>")
     print(f"CSV:   {args.csv}")
     print(f"JSON:  {args.csv}.summary.json")
     print("Done")

@@ -273,6 +273,81 @@ python gaze_onnx/experiments/aggregate_gaze_windows.py \
   --window-sec 20
 ```
 
+### 4.13 p1 自动驾驶片段批处理（20s 窗口指标）
+
+目标：从 `自然驾驶_视频标注情况 - p1(1).csv` 自动生成“去头尾 60s 后的 20s 窗口”，批量跑 gaze + wheel 推理，并提取窗口指标。
+
+规则（已确认）：
+- 窗口长度固定 `20s`
+- `off-path = Non-Forward + In-Car`
+- 每段 AD 区间先裁掉前后各 `60s`
+- 小部分 ROI 对不上/无人片段保留为缺失状态，不强行计算
+
+1) 从排班 CSV 解析区间并生成 20s 窗口：
+
+```bash
+python gaze_onnx/experiments/build_p1_schedule_windows.py \
+  --schedule-csv "自然驾驶_视频标注情况 - p1(1).csv" \
+  --videos-root data/natural_driving_p1/p1_剪辑好的视频 \
+  --window-sec 20 \
+  --trim-sec 60 \
+  --segments-out data/natural_driving_p1/analysis/p1_segments.parsed.csv \
+  --windows-out data/natural_driving_p1/analysis/p1_windows.20s.csv
+```
+
+2) 生成按 `segment_uid` 的推理计划（推荐）：
+
+```bash
+python gaze_onnx/experiments/build_p1_infer_plan.py \
+  --windows-csv data/natural_driving_p1/analysis/p1_windows.20s.csv \
+  --group-by segment \
+  --out-dir data/natural_driving_p1/infer_p1_windows/segment_mode \
+  --plan-csv data/natural_driving_p1/analysis/p1_infer_plan.segment.csv \
+  --gaze-map-csv data/natural_driving_p1/analysis/p1_gaze_map.segment.csv \
+  --wheel-map-csv data/natural_driving_p1/analysis/p1_wheel_map.segment.csv
+```
+
+3) 批量推理（只产出 CSV，不写 mp4，避免磁盘占用）：
+
+```bash
+/data/home/sim6g/anaconda3/envs/adri/bin/python gaze_onnx/experiments/run_p1_infer_plan.py \
+  --plan-csv data/natural_driving_p1/analysis/p1_infer_plan.segment.csv \
+  --run-gaze --run-wheel \
+  --skip-existing \
+  --no-video \
+  --python-bin /data/home/sim6g/anaconda3/envs/adri/bin/python \
+  --wheel-device cuda
+```
+
+若要同步导出 wheel 检测框（用于 YOLO 训练伪标签）：
+
+```bash
+/data/home/sim6g/anaconda3/envs/adri/bin/python gaze_onnx/experiments/run_p1_infer_plan.py \
+  --plan-csv data/natural_driving_p1/analysis/p1_infer_plan.segment.csv \
+  --run-wheel \
+  --skip-existing \
+  --no-video \
+  --python-bin /data/home/sim6g/anaconda3/envs/adri/bin/python \
+  --wheel-device cuda \
+  --wheel-det-csv-dir data/natural_driving_p1/analysis/wheel_det_csv
+```
+
+4) 计算 20s 窗口指标（允许部分片段尚未推理完成）：
+
+```bash
+python gaze_onnx/experiments/compute_p1_window_metrics.py \
+  --windows-csv data/natural_driving_p1/analysis/p1_windows.20s.csv \
+  --gaze-map-csv data/natural_driving_p1/analysis/p1_gaze_map.segment.csv \
+  --wheel-map-csv data/natural_driving_p1/analysis/p1_wheel_map.segment.csv \
+  --out-csv data/natural_driving_p1/analysis/p1_window_metrics.20s.csv
+```
+
+输出 `status` 说明：
+- `ok`：该 20s 窗口指标已成功计算
+- `missing_csv_map`：窗口未找到映射 CSV（计划/映射文件问题）
+- `missing_gaze_file` / `missing_wheel_file` / `missing_gaze_wheel_file`：该段推理文件尚未生成
+- `csv_load_error`：CSV 存在但字段不符合预期，需要检查该段输出格式
+
 ---
 
 ## 5. 跨域统一评估（帧级 + 事件级）
@@ -300,6 +375,10 @@ python gaze_onnx/experiments/cross_domain_eval.py \
 ```bash
 python -m pip install -r driver_monitor/requirements.txt
 ```
+
+当前 `driver_monitor/hand_on_wheel.py` 支持两种检测后端：
+- `--detector groundingdino`（默认基线）
+- `--detector yolo --yolo-model /path/to/best.pt`（轻量加速）
 
 基础推理：
 
@@ -331,6 +410,29 @@ python driver_monitor/analyze_state_csv.py \
   --csv driver_monitor/output/hand_on_wheel_30s_states.csv \
   --sweep-windows 0,3,5,30 \
   --sweep-out-csv driver_monitor/output/window_sweep.csv
+```
+
+为后续轻量 YOLO 加速准备伪标签（导出检测框）：
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --roi 1900 660 3300 1400 \
+  --weights models/groundingdino_swint_ogc.pth \
+  --no-video \
+  --state-csv driver_monitor/output/hand_on_wheel_states.csv \
+  --det-csv driver_monitor/output/hand_on_wheel_dets.csv
+```
+
+将 det-csv 转为 YOLO 检测数据集：
+
+```bash
+python driver_monitor/build_wheel_yolo_dataset.py \
+  --det-csv "driver_monitor/output/*.dets.csv" \
+  --out-dir driver_monitor/output/wheel_yolo_ds \
+  --use-roi-crop \
+  --include-negatives \
+  --neg-keep-prob 0.2
 ```
 
 ---

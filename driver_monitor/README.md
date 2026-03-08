@@ -59,6 +59,20 @@ python driver_monitor/hand_on_wheel.py \
   --select-roi
 ```
 
+Use YOLO backend (after training a small detector):
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --detector yolo \
+  --yolo-model /path/to/best.pt \
+  --yolo-hand-class-ids 0 \
+  --yolo-wheel-class-ids 1 \
+  --roi 950 300 1650 690 \
+  --output driver_monitor/output/hand_on_wheel_yolo.mp4 \
+  --state-csv driver_monitor/output/hand_on_wheel_yolo_states.csv
+```
+
 Optional:
 
 ```bash
@@ -91,6 +105,18 @@ python driver_monitor/hand_on_wheel.py \
   --state-csv driver_monitor/output/hand_on_wheel_30s_states.csv
 ```
 
+Export sampled-frame detection boxes (for YOLO dataset building):
+
+```bash
+python driver_monitor/hand_on_wheel.py \
+  --video /path/to/input.mp4 \
+  --roi 950 300 1650 690 \
+  --weights models/groundingdino_swint_ogc.pth \
+  --no-video \
+  --state-csv driver_monitor/output/hand_on_wheel_states.csv \
+  --det-csv driver_monitor/output/hand_on_wheel_dets.csv
+```
+
 Analyze state stability metrics for poster reporting:
 
 ```bash
@@ -106,7 +132,46 @@ python driver_monitor/analyze_state_csv.py \
 - `--sample-fps` can reduce compute cost by reusing detections between frames.
 - `--decision-window-sec` enables time-window majority vote. `0` keeps raw per-frame output.
 - `--state-csv` writes raw/stable states for later poster metrics (flip rate, false alarms, delay).
+- `--det-csv` exports sampled-frame boxes/classes/conf for YOLO acceleration workflow.
 - `--iou-on-threshold` and `--iou-off-threshold` enable hysteresis to reduce ON/OFF flicker.
 - `--uncertain-grace-sec` and `UNCERTAIN` state handle short missing detections.
 - `--max-seconds` is useful for quick A/B tests on long videos.
 - `analyze_state_csv.py` summarizes transitions/flip-rate reduction and can sweep multiple windows from one raw run.
+
+## YOLO acceleration workflow (recommended)
+
+Use GroundingDINO output as pseudo labels, then train a lightweight detector.
+
+1) Generate detection CSVs (`--det-csv`) on selected videos/segments.
+
+2) Convert det-csv files to YOLO dataset:
+
+```bash
+python driver_monitor/build_wheel_yolo_dataset.py \
+  --det-csv "driver_monitor/output/*.dets.csv" \
+  --out-dir driver_monitor/output/wheel_yolo_ds \
+  --use-roi-crop \
+  --include-negatives \
+  --neg-keep-prob 0.2 \
+  --val-ratio 0.2
+```
+
+3) Train a small model (example with Ultralytics CLI):
+
+```bash
+yolo detect train \
+  data=driver_monitor/output/wheel_yolo_ds/data.yaml \
+  model=yolo11n.pt \
+  imgsz=640 \
+  epochs=60 \
+  batch=16 \
+  device=0 \
+  name=wheel_yolo11n_pseudo
+```
+
+4) Validate and compare with GroundingDINO baseline:
+- speed (`fps` / wall-clock on same segments)
+- state agreement (`ON/OFF/UNCERTAIN` consistency)
+- transition stability after same `--decision-window-sec`
+
+5) Deploy with `hand_on_wheel.py --detector yolo` using trained `best.pt`.
