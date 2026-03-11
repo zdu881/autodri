@@ -85,30 +85,61 @@ class Face:
     kps: Optional[np.ndarray] = None
 
 
-def choose_face_by_tracking(
+def _face_center(face: Face) -> Tuple[float, float]:
+    return (
+        float((face.xyxy[0] + face.xyxy[2]) * 0.5),
+        float((face.xyxy[1] + face.xyxy[3]) * 0.5),
+    )
+
+
+def _center_dist(face: Face, center: Tuple[float, float]) -> float:
+    cx, cy = _face_center(face)
+    px, py = center
+    return math.hypot(cx - px, cy - py)
+
+
+def choose_face(
     faces: List[Face],
     prev_center: Optional[Tuple[float, float]],
+    mode: str = "right_to_left_track",
     max_center_dist: float = 160.0,
     top_k: int = 50,
 ) -> Tuple[Face, Tuple[float, float]]:
-    if prev_center is None or len(faces) == 1:
-        best = max(faces, key=lambda f: f.score)
-    else:
-        scored = sorted(faces, key=lambda f: f.score, reverse=True)[:top_k]
-        px, py = prev_center
+    """
+    Select one face among detections.
 
-        def dist(f: Face) -> float:
-            cx = float((f.xyxy[0] + f.xyxy[2]) * 0.5)
-            cy = float((f.xyxy[1] + f.xyxy[3]) * 0.5)
-            return math.hypot(cx - px, cy - py)
+    Modes:
+    - score_track: legacy behavior, track nearest among top score faces.
+    - right_to_left: pick rightmost face every frame.
+    - right_to_left_track: prioritize rightmost face while preserving temporal stability.
+    """
+    mode = str(mode or "right_to_left_track").strip().lower()
 
-        near = [f for f in scored if dist(f) <= max_center_dist]
-        if near:
-            best = min(near, key=dist)
+    if mode == "right_to_left":
+        best = max(faces, key=lambda f: (_face_center(f)[0], f.score))
+    elif mode == "score_track":
+        if prev_center is None or len(faces) == 1:
+            best = max(faces, key=lambda f: f.score)
         else:
-            best = max(scored, key=lambda f: f.score)
-    cx = float((best.xyxy[0] + best.xyxy[2]) * 0.5)
-    cy = float((best.xyxy[1] + best.xyxy[3]) * 0.5)
+            scored = sorted(faces, key=lambda f: f.score, reverse=True)[:top_k]
+            near = [f for f in scored if _center_dist(f, prev_center) <= max_center_dist]
+            if near:
+                best = min(near, key=lambda f: _center_dist(f, prev_center))
+            else:
+                best = max(scored, key=lambda f: f.score)
+    else:
+        # Default: right-to-left priority with tracking (recommended for this setup).
+        ranked = sorted(faces, key=lambda f: (_face_center(f)[0], f.score), reverse=True)[:top_k]
+        if prev_center is None or len(ranked) == 1:
+            best = ranked[0]
+        else:
+            near = [f for f in ranked if _center_dist(f, prev_center) <= max_center_dist]
+            if near:
+                # Keep right-side priority even within local neighborhood.
+                best = max(near, key=lambda f: (_face_center(f)[0], f.score))
+            else:
+                best = ranked[0]
+    cx, cy = _face_center(best)
     return best, (cx, cy)
 
 
@@ -481,6 +512,15 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--smooth-center-alpha", type=float, default=0.3,
                    help="EMA smoothing alpha for face center (0 disables)")
+    p.add_argument(
+        "--face-priority",
+        choices=["score_track", "right_to_left", "right_to_left_track"],
+        default="right_to_left_track",
+        help=(
+            "Face selection priority when multiple faces appear in ROI. "
+            "'right_to_left_track' is recommended for driver-on-right camera views."
+        ),
+    )
     p.add_argument("--track-max-dist", type=float, default=160.0)
     p.add_argument("--track-topk", type=int, default=50)
     p.add_argument("--class-debounce", type=int, default=3,
@@ -597,6 +637,7 @@ def main() -> None:
         raise ValueError(
             f"Invalid --class-bias length {raw_bias.size} for model with {classifier.num_classes} classes."
         )
+    print(f"[INFO] Face priority mode: {args.face_priority}")
 
     writer = None
     if not args.no_video:
@@ -668,9 +709,10 @@ def main() -> None:
             prev_face_center = None
             presence_reason = "No face"
         else:
-            face, prev_face_center = choose_face_by_tracking(
+            face, prev_face_center = choose_face(
                 faces,
                 prev_face_center,
+                mode=str(args.face_priority),
                 max_center_dist=float(args.track_max_dist),
                 top_k=int(args.track_topk),
             )

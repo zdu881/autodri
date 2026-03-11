@@ -246,6 +246,7 @@ conda run -n adri python gaze_onnx/experiments/train_gaze_cls.py \
 conda run -n adri python gaze_onnx/gaze_state_cls.py \
   --video "data/natural_driving_p1/p1_剪辑好的视频/第三批/10.31 085825/12月13日(1).mp4" \
   --roi 1900 660 3300 1400 \
+  --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
   --out-video data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.mp4 \
   --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_full.csv
@@ -259,12 +260,14 @@ conda run -n adri python gaze_onnx/gaze_state_cls.py \
   --start-sec 600 \
   --duration-sec 20 \
   --roi 1900 660 3300 1400 \
+  --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
   --out-video data/natural_driving_p1/infer_onevideo/p1_demo_gaze_seg_600_20.mp4 \
   --csv data/natural_driving_p1/infer_onevideo/p1_demo_gaze_seg_600_20.csv
 ```
 
 说明：CSV 中 `Timestamp/FrameID` 为片段内相对值；`Video_Timestamp/Video_FrameID` 为原视频绝对位置。
+多人脸场景默认使用 `right_to_left_track`，优先右侧人脸并结合跟踪稳定；如需回退可手工改为 `score_track`。
 
 ```bash
 python gaze_onnx/experiments/aggregate_gaze_windows.py \

@@ -70,6 +70,7 @@ python gaze_onnx/gaze_state_cls.py --help
 python gaze_onnx/gaze_state_cls.py \
   --video /path/to/input.mp4 \
   --roi 1900 660 3300 1400 \
+  --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
   --out-video gaze_onnx/output/gaze_demo.mp4 \
   --csv gaze_onnx/output/gaze_demo.csv
@@ -83,10 +84,15 @@ python gaze_onnx/gaze_state_cls.py \
   --start-sec 120 \
   --duration-sec 20 \
   --roi 1900 660 3300 1400 \
+  --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
   --out-video gaze_onnx/output/gaze_demo_seg_120_20.mp4 \
   --csv gaze_onnx/output/gaze_demo_seg_120_20.csv
 ```
+
+多人脸场景说明：
+- `gaze_state_cls.py` 默认使用 `--face-priority right_to_left_track`，在同一 ROI 内优先选择右侧人脸，并结合跟踪稳定性，减少副驾/后排干扰。
+- 如需回退旧逻辑可显式设置 `--face-priority score_track`。
 
 将帧级结果聚合为 20s 事件级：
 

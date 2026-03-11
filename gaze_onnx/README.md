@@ -48,6 +48,7 @@ python gaze_state_cls.py \
   --scrfd "../models/scrfd_person_2.5g.onnx" \
   --cls-model "../models/gaze_cls_yolov8n.onnx" \
   --roi 950 300 1650 690 \
+  --face-priority right_to_left_track \
   --out-video output_gaze_cls.mp4 \
   --csv output_gaze_cls.csv \
   --presence-min-face-score 0.45 \
@@ -60,6 +61,12 @@ Useful options:
 - `--class-bias BIAS_F BIAS_IC BIAS_NF`
 - `--cls-threshold 0.45`
 - `--write-when-other skip|other`
+- `--face-priority score_track|right_to_left|right_to_left_track`
+
+Multi-face note:
+- Default is `right_to_left_track` (prefer right-side face with temporal tracking),
+  which is safer for driver-on-right camera views when passengers are present.
+- Use `score_track` to keep legacy behavior.
 
 CSV now includes both `Base_Class` (3-way gaze class) and final `Gaze_Class` (4-way with `Other`).
 
