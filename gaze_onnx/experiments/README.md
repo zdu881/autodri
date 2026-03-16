@@ -58,6 +58,16 @@ python gaze_onnx/experiments/web_label_tool.py --help
 - 训练输出：`runs/classify/gaze_onnx/experiments/runs_cls/...`
 - ONNX 导出：`models/*.onnx`
 
+历史数据速查（本项目已有）：
+- 两域清单：`gaze_onnx/experiments/manifests/two_domain_videos*.csv`
+- 两域标注包：`gaze_onnx/experiments/anno_two_domain_v*`
+- 两域训练集：`gaze_onnx/experiments/cls_dataset_two_domain_*`
+- p1 标注包：`gaze_onnx/experiments/anno_p1_gaze_*`
+- p1 训练集：`gaze_onnx/experiments/cls_dataset_p1_*`
+- p1 分析结果：`data/natural_driving_p1/analysis/`
+
+说明：若目录不存在，通常是当前机器尚未同步对应数据。
+
 ---
 
 ## 4. 端到端流程（新参与者 pX）

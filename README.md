@@ -119,6 +119,82 @@ python gaze_onnx/experiments/aggregate_gaze_windows.py \
 7. `build_fewshot_pack.py`（如 200-shot）
 8. `prepare_cls_dataset_from_pack.py` + `train_gaze_cls.py`
 
+### 3.2.1 Domain 标注流程（可直接演示）
+
+如果你今天要给同事演示“如何做 domain 标注”，按这 4 步即可：
+
+1. 准备 domain 清单 CSV（最小字段）  
+   `domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2`  
+   可选字段：`n_samples`（该视频抽帧数）
+
+示例（`gaze_onnx/experiments/manifests/demo_two_domain.csv`）：
+
+```csv
+domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2,n_samples
+car1_person1,data/demo/videos/car1.mp4,1900,660,3300,1400,300
+car2_person2,data/demo/videos/car2.mp4,1900,660,3300,1400,300
+```
+
+2. 生成标注包（ROI 裁剪后的图片）
+
+```bash
+python gaze_onnx/experiments/create_multidomain_annotation_pack.py \
+  --domains-csv gaze_onnx/experiments/manifests/demo_two_domain.csv \
+  --out-dir gaze_onnx/experiments/anno_demo_v1 \
+  --samples-per-domain 300 \
+  --seed 42
+```
+
+3. 打开 Web 标注页面
+
+```bash
+python gaze_onnx/experiments/web_label_tool.py \
+  --samples-dir gaze_onnx/experiments/anno_demo_v1 \
+  --port 8001
+```
+
+浏览器：`http://127.0.0.1:8001`
+
+4. 交付标注结果  
+   `gaze_onnx/experiments/anno_demo_v1/labels.csv`
+
+标注快捷键：
+- `1` Forward
+- `2` Non-Forward
+- `3` In-Car
+- `4` Other
+- `0` 清除
+
+统一规则：
+- ROI 对不上、无人、非驾驶员、无法判定，一律标 `Other`。
+
+### 3.2.2 历史数据放在哪（路径速查）
+
+两域历史数据（car1_person1 / car2_person2）：
+- domain 清单：`gaze_onnx/experiments/manifests/two_domain_videos.csv`
+- 早期版本清单：`gaze_onnx/experiments/manifests/two_domain_videos.v1.csv`
+- 建议版本清单：`gaze_onnx/experiments/manifests/two_domain_videos.suggested.csv`
+- 标注包：
+  - `gaze_onnx/experiments/anno_two_domain_v1/`
+  - `gaze_onnx/experiments/anno_two_domain_v2_same_roi/`
+  - `gaze_onnx/experiments/anno_two_domain_v3_ratio_roi_run1/`
+- 训练集：
+  - `gaze_onnx/experiments/cls_dataset_two_domain_holdout_car1_genv3/`
+  - `gaze_onnx/experiments/cls_dataset_two_domain_holdout_car2_genv3/`
+- 训练输出：`runs/classify/gaze_onnx/experiments/runs_cls/`
+
+p1 历史数据：
+- 视频与分析目录：`data/natural_driving_p1/`
+- p1 窗口指标：`data/natural_driving_p1/analysis/p1_window_metrics.20s.csv`
+- p1 标注包：
+  - `gaze_onnx/experiments/anno_p1_gaze_small_v1/`
+  - `gaze_onnx/experiments/anno_p1_gaze_200shot_v1/`
+- p1 训练集：`gaze_onnx/experiments/cls_dataset_p1_200shot_driveonly_v1/`
+
+说明：
+- 如果某些目录在当前机器不存在，通常表示该数据尚未同步到本机。
+- SMB 拉取流程见 `gaze_onnx/experiments/README.md` 第 4 章和 `docs/annotation_workflow.md`。
+
 ### 3.3 hand-on-wheel（30s 稳态）
 
 ```bash
