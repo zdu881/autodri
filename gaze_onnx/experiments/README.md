@@ -97,6 +97,9 @@ python gaze_onnx/experiments/prepare_roi_label_pack.py \
   --grid-step 220
 ```
 
+如果你的视频已放在历史目录，也可用：
+- `--videos-root data/natural_driving_p1/p1_剪辑好的视频`
+
 输出：
 - `roi_label_manifest.csv`（待填写 ROI 坐标）
 - `refs/*__grid.jpg`（网格参考图）

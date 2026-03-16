@@ -37,3 +37,6 @@ gaze_onnx/experiments/samples_*/
 
 # Keep ROI metadata text/csv, ignore heavy reference images
 gaze_onnx/experiments/roi_refs/**/*.jpg
+
+# Generated participant ROI packs are local work artifacts
+gaze_onnx/experiments/roi_refs/p*_label_pack/

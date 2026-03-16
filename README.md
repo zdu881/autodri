@@ -60,6 +60,63 @@ python gaze_onnx/experiments/web_label_tool.py --help
 python gaze_onnx/gaze_state_cls.py --help
 ```
 
+### 2.1 模型文件配置（没有模型无法推理）
+
+推理前至少确认以下文件存在（按默认参数）：
+
+说明：
+- `models/` 与 `data/` 默认在 `.gitignore` 中，属于本地资产目录，不会随 git 自动提交。
+
+- gaze 推理（`gaze_state_cls.py`）：
+  - `models/scrfd_person_2.5g.onnx`（人脸检测）
+  - `models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx`（推荐分类模型）
+  - 备选：`models/gaze_cls_yolov8n.onnx`
+- wheel 推理（`hand_on_wheel.py` + GroundingDINO）：
+  - `models/groundingdino_swint_ogc.pth`
+  - 若你机器上仍有历史目录，也可直接用：`GroundingDINO/weights/groundingdino_swint_ogc.pth`
+
+一键自检（推荐演示前先跑）：
+
+```bash
+python - <<'PY'
+from pathlib import Path
+checks = {
+    "scrfd": Path("models/scrfd_person_2.5g.onnx"),
+    "gaze_cls_recommended": Path("models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx"),
+    "gaze_cls_fallback": Path("models/gaze_cls_yolov8n.onnx"),
+    "wheel_weight_models": Path("models/groundingdino_swint_ogc.pth"),
+    "wheel_weight_legacy": Path("GroundingDINO/weights/groundingdino_swint_ogc.pth"),
+}
+for k, p in checks.items():
+    print(f"{k:24s} {'OK' if p.exists() else 'MISSING'}  {p}")
+PY
+```
+
+如果缺模型，按下面处理：
+
+1. 缺 gaze 分类 ONNX：先训练/微调后导出
+
+```bash
+python gaze_onnx/experiments/train_gaze_cls.py \
+  --data gaze_onnx/experiments/cls_dataset_p1_200shot_driveonly_v1 \
+  --mode export \
+  --weights runs/classify/gaze_onnx/experiments/runs_cls/gaze_p1_200shot_driveonly_ft_v1_gpu1/weights/best.pt
+```
+
+导出后把 ONNX 放到 `models/`（文件名可统一为 `gaze_cls_p1_200shot_driveonly_ft_v1.onnx`）。
+
+2. 缺 SCRFD：下载 `scrfd_person_2.5g.onnx` 后放入 `models/`
+
+3. 缺 GroundingDINO 权重：
+- 若已有历史目录可直接复制：
+
+```bash
+mkdir -p models
+cp GroundingDINO/weights/groundingdino_swint_ogc.pth models/
+```
+
+- 若无历史目录：从官方发布下载 `groundingdino_swint_ogc.pth`，放入 `models/`
+
 ---
 
 ## 3. 常用入口
@@ -69,6 +126,7 @@ python gaze_onnx/gaze_state_cls.py --help
 ```bash
 python gaze_onnx/gaze_state_cls.py \
   --video /path/to/input.mp4 \
+  --scrfd models/scrfd_person_2.5g.onnx \
   --roi 1900 660 3300 1400 \
   --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
@@ -83,6 +141,7 @@ python gaze_onnx/gaze_state_cls.py \
   --video /path/to/input.mp4 \
   --start-sec 120 \
   --duration-sec 20 \
+  --scrfd models/scrfd_person_2.5g.onnx \
   --roi 1900 660 3300 1400 \
   --face-priority right_to_left_track \
   --cls-model models/gaze_cls_p1_200shot_driveonly_ft_v1.onnx \
@@ -121,7 +180,7 @@ python gaze_onnx/experiments/aggregate_gaze_windows.py \
 
 ### 3.2.1 Domain 标注流程（可直接演示）
 
-如果你今天要给同事演示“如何做 domain 标注”，按这 4 步即可：
+“如何做 domain 标注”，按这 4 步即可：
 
 1. 准备 domain 清单 CSV（最小字段）  
    `domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2`  
@@ -206,6 +265,9 @@ python driver_monitor/hand_on_wheel.py \
   --decision-window-sec 30 \
   --state-csv driver_monitor/output/hand_on_wheel_30s_states.csv
 ```
+
+如果 `models/groundingdino_swint_ogc.pth` 不存在，可临时改为：
+- `--weights GroundingDINO/weights/groundingdino_swint_ogc.pth`
 
 分析窗口平滑收益：
 
