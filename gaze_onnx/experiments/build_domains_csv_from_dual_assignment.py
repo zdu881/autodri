@@ -13,6 +13,7 @@ Output:
 
 import argparse
 import csv
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -43,6 +44,11 @@ def parse_args() -> argparse.Namespace:
         "--video-contains",
         default="",
         help="Optional substring filter on video path",
+    )
+    p.add_argument(
+        "--participant-majority-roi",
+        action="store_true",
+        help="Force all output rows to use the dominant ROI among filtered rows.",
     )
     return p.parse_args()
 
@@ -77,6 +83,7 @@ def build_rows(args: argparse.Namespace) -> Tuple[List[Dict[str, str]], Dict[str
         "skip_video_filter": 0,
         "skip_bad_roi": 0,
         "out_total": 0,
+        "majority_override_count": 0,
     }
 
     with src.open("r", encoding="utf-8", newline="") as f:
@@ -124,6 +131,19 @@ def build_rows(args: argparse.Namespace) -> Tuple[List[Dict[str, str]], Dict[str
                 }
             )
 
+    if args.participant_majority_roi and out_rows:
+        roi_counter = Counter(
+            (row["roi_x1"], row["roi_y1"], row["roi_x2"], row["roi_y2"]) for row in out_rows
+        )
+        majority_roi, _ = roi_counter.most_common(1)[0]
+        override_count = 0
+        for row in out_rows:
+            cur_roi = (row["roi_x1"], row["roi_y1"], row["roi_x2"], row["roi_y2"])
+            if cur_roi != majority_roi:
+                override_count += 1
+                row["roi_x1"], row["roi_y1"], row["roi_x2"], row["roi_y2"] = majority_roi
+        stats["majority_override_count"] = override_count
+
     stats["out_total"] = len(out_rows)
     return out_rows, stats
 
@@ -162,6 +182,7 @@ def main() -> None:
                 f"skip_uncertain={stats['skip_uncertain']}",
                 f"skip_video_filter={stats['skip_video_filter']}",
                 f"skip_bad_roi={stats['skip_bad_roi']}",
+                f"majority_override_count={stats['majority_override_count']}",
             ]
         )
     )

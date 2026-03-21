@@ -1,0 +1,17 @@
+domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2,n_samples,source_swapped,source_uncertain
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.14 160218-165018/12月18日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.14 170730-194630/12月18日.mp4,1900,660,3300,1400,32,1,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.14 210250-212940/12月18日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.14 213920-214520/12月18日.mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.14 221130-222930/12月18日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.15 111050-112550/12月18日.mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第一批/12.15 113630-143450/12月18日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.16 011051-020120/12月19日(1).mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.16 165120-180020/12月19日.mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.16 190430-214020/12月19日.mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.16 214830-230030/12月19日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.16 232724-004520/12月19日.mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.17 005847-013518/12月19日(1).mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.17 124316-134647/12月19日(1).mp4,1900,660,3300,1400,24,0,0
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.17 140620-163020/12月19日.mp4,1900,660,3300,1400,32,0,1
+p6,/data/home/sim6g/autodri/data/natural_driving/p6/剪辑好的视频/第二批/12.17 172640-181740/12月19日(1).mp4,1900,660,3300,1400,24,0,0
