@@ -1,5 +1,0 @@
-FrameID,Timestamp,RawImage,GridImage,Width,Height
-0,0.000,frame_000000_raw.jpg,frame_000000_grid.jpg,3840,2160
-43500,1740.000,frame_043500_raw.jpg,frame_043500_grid.jpg,3840,2160
-86999,3479.960,frame_086999_raw.jpg,frame_086999_grid.jpg,3840,2160
-130499,5219.960,frame_130499_raw.jpg,frame_130499_grid.jpg,3840,2160

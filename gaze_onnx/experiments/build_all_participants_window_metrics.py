@@ -11,7 +11,7 @@ for _parent in (_HERE.parent, *_HERE.parents):
             sys.path.insert(0, str(_parent))
         break
 
-from autodri.workflows.build_participant_video_manifest_from_xlsx import *  # noqa: F401,F403
+from autodri.workflows.build_all_participants_window_metrics import *  # noqa: F401,F403
 
 
 if __name__ == "__main__":

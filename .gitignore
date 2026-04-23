@@ -4,6 +4,12 @@ __pycache__/
 .ipynb_checkpoints/
 .vscode/
 *.log
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
 
 # Artifacts
 driver_monitor/output/
@@ -40,3 +46,7 @@ gaze_onnx/experiments/roi_refs/**/*.jpg
 
 # Generated participant ROI packs are local work artifacts
 gaze_onnx/experiments/roi_refs/p*_label_pack/
+
+# In-repo fallback workspace
+autodri_workspace/
+workspace/
