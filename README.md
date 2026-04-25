@@ -50,7 +50,7 @@ python -m autodri.cli.<name>
 - `build_all_participants_window_metrics`
 - `build_participants_results_summary`
 
-详情见 [supported_workflows.md](/data/home/sim6g/autodri/docs/supported_workflows.md)。
+详情见 [supported_workflows.md](docs/supported_workflows.md)。
 
 ## 3. 旧入口映射
 
@@ -77,5 +77,4 @@ python -m autodri.cli.<name>
 
 - 数据、模型、报表和历史标注备份不再是仓库源码的一部分。
 - 脚本默认优先从 `${AUTODRI_WORKSPACE}` 解析资源；必要时才回退到旧 repo 路径，并打印弃用警告。
-- 需要归档的历史内容见 [legacy_inventory.md](/data/home/sim6g/autodri/docs/legacy_inventory.md)。
-
+- 需要归档的历史内容见 [legacy_inventory.md](docs/legacy_inventory.md)。

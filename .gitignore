@@ -10,6 +10,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+.codex
 
 # Artifacts
 driver_monitor/output/
@@ -50,3 +51,20 @@ gaze_onnx/experiments/roi_refs/p*_label_pack/
 # In-repo fallback workspace
 autodri_workspace/
 workspace/
+
+# Local-only docs, review payloads, and drafts
+docs/paper_draft_*.md
+docs/paper_method_workflow*.md
+docs/wheel_manual_verification.current.md
+docs/wheel_student_plan.md
+docs/wheel_context_compact.md
+docs/p1_gaze_blank_examples/
+docs/wheel_rows_zero_checks/
+
+# Local-only study manifests and working notes
+gaze_onnx/experiments/manifests/*.readable.wip.csv
+gaze_onnx/experiments/manifests/*_target_videos.v1.csv
+gaze_onnx/experiments/manifests/*_gaze_domains*.v1.csv
+gaze_onnx/experiments/manifests/*same_as_p1_v1.csv
+gaze_onnx/experiments/manifests/target_segments.unified.current.csv
+gaze_onnx/experiments/manifests/target_videos.unified.current.csv

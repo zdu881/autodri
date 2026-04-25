@@ -21,7 +21,13 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from autodri.common.paths import manifests_current_root, models_root, participant_analysis_dir, reports_root
+from autodri.common.paths import (
+    manifests_current_root,
+    models_root,
+    participant_analysis_dir,
+    reports_root,
+    resolve_workspace_or_repo_path,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -104,23 +110,13 @@ def summarize_gaze(gaze_files: List[Path]) -> Dict[str, object]:
 
 
 def summarize_metrics(metrics_csv: Path, event_summary_csv: Path) -> Dict[str, object]:
-    if event_summary_csv.exists():
-        rows = read_csv(event_summary_csv)
-        kv = {r["metric"]: r["value"] for r in rows if "metric" in r and "value" in r}
-        latest = event_summary_csv.stat().st_mtime
-        return {
-            "n_windows": kv.get("n_windows", ""),
-            "mean_pct_time_off_path": kv.get("mean_pct_time_off_path", ""),
-            "mean_glance_rate_per_min": kv.get("mean_glance_rate_per_min", ""),
-            "mean_offpath_ge_1p6s_per_window": kv.get("mean_offpath_ge_1p6s_per_window", ""),
-            "mean_offpath_ge_2p0s_per_window": kv.get("mean_offpath_ge_2p0s_per_window", ""),
-            "mean_wheel_on_ratio_overall": kv.get("mean_wheel_on_ratio_overall", ""),
-            "latest": latest,
-        }
-
     if not metrics_csv.exists():
         return {
             "n_windows": "",
+            "coverage_ok_windows": "",
+            "coverage_fail_windows": "",
+            "coverage_zero_windows": "",
+            "mean_gaze_coverage_ratio": "",
             "mean_pct_time_off_path": "",
             "mean_glance_rate_per_min": "",
             "mean_offpath_ge_1p6s_per_window": "",
@@ -130,19 +126,31 @@ def summarize_metrics(metrics_csv: Path, event_summary_csv: Path) -> Dict[str, o
         }
 
     rows = read_csv(metrics_csv)
-    ok = [r for r in rows if not str(r.get("error", "")).strip()]
+    ok = [r for r in rows if str(r.get("status", "")).strip().lower() == "ok"]
+    has_coverage = any("gaze_coverage_ok" in r for r in rows)
+    if has_coverage:
+        ok_for_summary = [r for r in ok if str(r.get("gaze_coverage_ok", "0")).strip() == "1"]
+    else:
+        ok_for_summary = ok
 
     def mean(col: str) -> str:
         vals = []
-        for r in ok:
+        for r in ok_for_summary:
             try:
                 vals.append(float(r[col]))
             except Exception:
                 pass
         return f"{sum(vals)/len(vals):.4f}" if vals else ""
 
+    def count(pred) -> str:
+        return str(sum(1 for r in ok if pred(r)))
+
     return {
-        "n_windows": str(len(ok)),
+        "n_windows": str(len(ok_for_summary)),
+        "coverage_ok_windows": count(lambda r: str(r.get("gaze_coverage_ok", "0")).strip() == "1") if has_coverage else "",
+        "coverage_fail_windows": count(lambda r: str(r.get("gaze_coverage_ok", "0")).strip() == "0") if has_coverage else "",
+        "coverage_zero_windows": count(lambda r: str(r.get("gaze_qc_reason", "")).strip() == "zero_gaze_rows") if has_coverage else "",
+        "mean_gaze_coverage_ratio": mean("gaze_coverage_ratio") if has_coverage else "",
         "mean_pct_time_off_path": mean("pct_time_off_path"),
         "mean_glance_rate_per_min": mean("glance_rate_per_min"),
         "mean_offpath_ge_1p6s_per_window": mean("offpath_count_ge_1p6s"),
@@ -197,7 +205,7 @@ def main() -> None:
             gv = str(r.get("gaze_csv", "")).strip()
             if not gv:
                 continue
-            gaze_files.append(Path(gv))
+            gaze_files.append(resolve_workspace_or_repo_path(gv))
         existing_gaze_files = [f for f in gaze_files if f.exists()]
         gaze = summarize_gaze(existing_gaze_files)
         metrics = summarize_metrics(ps["metrics"], ps["event_summary"])
@@ -219,6 +227,10 @@ def main() -> None:
                 "pct_other": str(gaze["pct"].get("Other", "")),
                 "offpath_ratio_valid": str(gaze["off_ratio"]),
                 "n_windows": str(metrics["n_windows"]),
+                "coverage_ok_windows": str(metrics["coverage_ok_windows"]),
+                "coverage_fail_windows": str(metrics["coverage_fail_windows"]),
+                "coverage_zero_windows": str(metrics["coverage_zero_windows"]),
+                "mean_gaze_coverage_ratio": str(metrics["mean_gaze_coverage_ratio"]),
                 "mean_pct_time_off_path": str(metrics["mean_pct_time_off_path"]),
                 "mean_glance_rate_per_min": str(metrics["mean_glance_rate_per_min"]),
                 "mean_offpath_ge_1p6s_per_window": str(metrics["mean_offpath_ge_1p6s_per_window"]),

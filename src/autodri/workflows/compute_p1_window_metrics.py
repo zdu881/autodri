@@ -31,6 +31,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from autodri.common.paths import resolve_workspace_or_repo_path
+
 
 LOCATION_CLASSES = ("Forward", "Non-Forward", "In-Car")
 OFF_PATH_CLASSES = {"Non-Forward", "In-Car"}
@@ -38,6 +40,7 @@ WHEEL_VALID = {"ON", "OFF"}
 STATE_ON = "ON"
 STATE_OFF = "OFF"
 STATE_UNCERTAIN = "UNCERTAIN"
+SUPPORTED_GAZE_FPS = (25.0, 30.0)
 
 
 @dataclass
@@ -51,6 +54,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gaze-map-csv", required=True, help="CSV with columns: video_path,gaze_csv")
     p.add_argument("--wheel-map-csv", required=True, help="CSV with columns: video_path,wheel_csv")
     p.add_argument("--out-csv", required=True)
+    p.add_argument(
+        "--out-qc-csv",
+        default="",
+        help="Optional QC CSV for windows with zero/low gaze coverage. Default derives from --out-csv.",
+    )
     p.add_argument(
         "--nearest-wheel-max-gap",
         type=float,
@@ -93,6 +101,12 @@ def parse_args() -> argparse.Namespace:
             "Default OFF is conservative because most UNCERTAIN frames have no hand evidence."
         ),
     )
+    p.add_argument(
+        "--gaze-coverage-threshold",
+        type=float,
+        default=0.98,
+        help="Minimum gaze_rows / expected_gaze_rows required for a window to be used in final summaries.",
+    )
     return p.parse_args()
 
 
@@ -113,7 +127,8 @@ def load_map(path: Path, value_col: str) -> Tuple[Dict[str, str], Dict[str, str]
     by_segment: Dict[str, str] = {}
     for _, r in df.iterrows():
         k = canon_path(str(r["video_path"]))
-        v = str(r[value_col]).strip()
+        raw_v = str(r[value_col]).strip()
+        v = str(resolve_workspace_or_repo_path(raw_v)) if raw_v else ""
         if k and v:
             by_video[k] = v
         if "segment_uid" in df.columns:
@@ -139,7 +154,23 @@ def load_gaze_csv(path: Path) -> pd.DataFrame:
         }
     ).dropna(subset=["t"])
     x = x.sort_values("t").reset_index(drop=True)
+    x.attrs["nominal_gaze_fps"] = infer_nominal_gaze_fps(x["t"].to_numpy(dtype=float))
     return x
+
+
+def infer_nominal_gaze_fps(times: np.ndarray) -> float:
+    if times.size < 2:
+        return 25.0
+    diffs = np.diff(times)
+    diffs = diffs[diffs > 0]
+    if diffs.size == 0:
+        return 25.0
+    raw_fps = float(1.0 / np.median(diffs))
+    return float(min(SUPPORTED_GAZE_FPS, key=lambda fps: abs(float(fps) - raw_fps)))
+
+
+def expected_gaze_rows_for_window(window_sec: float, nominal_gaze_fps: float) -> int:
+    return max(1, int(round(float(window_sec) * float(nominal_gaze_fps))))
 
 
 def normalize_wheel_state_from_row(row: pd.Series) -> str:
@@ -382,6 +413,7 @@ def compute_one_window(
     gaze_df: pd.DataFrame,
     wheel_df: pd.DataFrame,
     max_gap: float,
+    gaze_coverage_threshold: float,
 ) -> Dict[str, str]:
     g = gaze_df[(gaze_df["t"] >= w0) & (gaze_df["t"] < w1)].copy()
     wh = wheel_df[(wheel_df["t"] >= w0) & (wheel_df["t"] < w1)].copy()
@@ -415,6 +447,19 @@ def compute_one_window(
     # Overall wheel ratio from wheel stream itself.
     overall_on_r, overall_off_r, overall_on_n, overall_off_n = ratio_on_off(w_state)
 
+    nominal_gaze_fps = float(
+        gaze_df.attrs.get("nominal_gaze_fps", infer_nominal_gaze_fps(gaze_df["t"].to_numpy(dtype=float)))
+    )
+    expected_gaze_rows = int(expected_gaze_rows_for_window(win_sec, nominal_gaze_fps))
+    coverage_ratio = float(g_times.size) / float(expected_gaze_rows) if expected_gaze_rows > 0 else float("nan")
+    coverage_ok = bool(expected_gaze_rows > 0 and coverage_ratio >= float(gaze_coverage_threshold))
+    if g_times.size <= 0:
+        gaze_qc_reason = "zero_gaze_rows"
+    elif coverage_ok:
+        gaze_qc_reason = ""
+    else:
+        gaze_qc_reason = "low_gaze_coverage"
+
     def fmt(v: float) -> str:
         if v is None or not np.isfinite(float(v)):
             return ""
@@ -425,7 +470,13 @@ def compute_one_window(
         "window_start_sec": f"{w0:.3f}",
         "window_end_sec": f"{w1:.3f}",
         "window_duration_sec": f"{win_sec:.3f}",
+        "nominal_gaze_fps": fmt(nominal_gaze_fps),
         "gaze_rows": str(int(g_times.size)),
+        "expected_gaze_rows": str(int(expected_gaze_rows)),
+        "gaze_coverage_ratio": fmt(coverage_ratio),
+        "gaze_coverage_threshold": fmt(float(gaze_coverage_threshold)),
+        "gaze_coverage_ok": "1" if coverage_ok else "0",
+        "gaze_qc_reason": gaze_qc_reason,
         "wheel_rows": str(int(w_times.size)),
         "pct_time_off_path": fmt(off_ratio),
         "pct_time_forward": fmt(loc_ratio["Forward"]),
@@ -467,6 +518,7 @@ def main() -> None:
     gaze_map_csv = Path(args.gaze_map_csv)
     wheel_map_csv = Path(args.wheel_map_csv)
     out_csv = Path(args.out_csv)
+    out_qc_csv = Path(args.out_qc_csv) if str(args.out_qc_csv).strip() else out_csv.with_name(f"{out_csv.stem}.gaze_qc.csv")
 
     if not windows_csv.exists():
         raise FileNotFoundError(windows_csv)
@@ -567,6 +619,7 @@ def main() -> None:
             gaze_df=gaze_cache[gaze_csv],
             wheel_df=wheel_cache[wheel_csv],
             max_gap=float(args.nearest_wheel_max_gap),
+            gaze_coverage_threshold=float(args.gaze_coverage_threshold),
         )
         row.update(met)
         row["status"] = "ok"
@@ -583,14 +636,35 @@ def main() -> None:
         with out_csv.open("w", encoding="utf-8", newline="") as f:
             csv.writer(f).writerow(["empty"])
 
+    qc_rows = [
+        r
+        for r in out_rows
+        if r.get("status") == "ok" and str(r.get("gaze_coverage_ok", "0")).strip() != "1"
+    ]
+    out_qc_csv.parent.mkdir(parents=True, exist_ok=True)
+    if qc_rows:
+        fields = sorted({k for r in qc_rows for k in r.keys()})
+        with out_qc_csv.open("w", encoding="utf-8", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            w.writeheader()
+            w.writerows(qc_rows)
+    else:
+        with out_qc_csv.open("w", encoding="utf-8", newline="") as f:
+            csv.writer(f).writerow(["empty"])
+
     n_ok = sum(1 for r in out_rows if r.get("status") == "ok")
+    n_coverage_ok = sum(
+        1 for r in out_rows if r.get("status") == "ok" and str(r.get("gaze_coverage_ok", "0")).strip() == "1"
+    )
     print(f"Windows total={len(out_rows)} ok={n_ok}")
+    print(f"Coverage ok windows={n_coverage_ok} threshold={float(args.gaze_coverage_threshold):.3f}")
     print(f"Missing gaze map: {n_no_gaze}, missing wheel map: {n_no_wheel}")
     print(
         "Missing files: "
         f"gaze={n_missing_gaze_file}, wheel={n_missing_wheel_file}, load_error={n_load_err}"
     )
     print(f"Output: {out_csv}")
+    print(f"QC Output: {out_qc_csv}")
 
 
 if __name__ == "__main__":

@@ -68,6 +68,11 @@ def parse_args() -> argparse.Namespace:
         help="Workbook with all_windows + participant_summary sheets",
     )
     p.add_argument(
+        "--out-qc-csv",
+        default=str(reports_root() / "all_participants_window_metrics_qc.current.csv"),
+        help="QC CSV for windows with zero/low gaze coverage",
+    )
+    p.add_argument(
         "--nearest-wheel-max-gap",
         type=float,
         default=0.35,
@@ -108,6 +113,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip XLSX export and only write CSV files",
     )
+    p.add_argument(
+        "--gaze-coverage-threshold",
+        type=float,
+        default=0.98,
+        help="Minimum gaze_rows / expected_gaze_rows required for a window to be used in summary counts/QC pass.",
+    )
     return p.parse_args()
 
 
@@ -139,6 +150,7 @@ def compute_rows_for_participant(
     uncertain_bridge_on_sec: float,
     uncertain_bridge_mixed_sec: float,
     uncertain_default_state: str,
+    gaze_coverage_threshold: float,
 ) -> Tuple[List[Dict[str, str]], Dict[str, object]]:
     summary: Dict[str, object] = {
         "participant": participant,
@@ -152,6 +164,11 @@ def compute_rows_for_participant(
         "missing_wheel_file_windows": 0,
         "missing_both_files_windows": 0,
         "csv_load_error_windows": 0,
+        "coverage_ok_windows": 0,
+        "coverage_fail_windows": 0,
+        "coverage_zero_windows": 0,
+        "windows_used_for_summary": 0,
+        "gaze_coverage_threshold": float(gaze_coverage_threshold),
         "input_status": "ok",
         "wheel_uncertain_policy": resolve_uncertain,
         "uncertain_bridge_on_sec": uncertain_bridge_on_sec,
@@ -258,10 +275,18 @@ def compute_rows_for_participant(
                 gaze_df=gaze_cache[gaze_csv],
                 wheel_df=wheel_cache[wheel_csv],
                 max_gap=max_gap,
+                gaze_coverage_threshold=gaze_coverage_threshold,
             )
         )
         row["status"] = "ok"
         summary["ok_windows"] = int(summary["ok_windows"]) + 1
+        if str(row.get("gaze_coverage_ok", "0")).strip() == "1":
+            summary["coverage_ok_windows"] = int(summary["coverage_ok_windows"]) + 1
+            summary["windows_used_for_summary"] = int(summary["windows_used_for_summary"]) + 1
+        else:
+            summary["coverage_fail_windows"] = int(summary["coverage_fail_windows"]) + 1
+            if str(row.get("gaze_qc_reason", "")).strip() == "zero_gaze_rows":
+                summary["coverage_zero_windows"] = int(summary["coverage_zero_windows"]) + 1
         out_rows.append(row)
 
     return out_rows, summary
@@ -285,6 +310,7 @@ def main() -> None:
 
     all_rows: List[Dict[str, str]] = []
     summary_rows: List[Dict[str, object]] = []
+    qc_rows: List[Dict[str, str]] = []
 
     for participant in args.participants:
         paths = participant_paths(participant)
@@ -298,31 +324,46 @@ def main() -> None:
             uncertain_bridge_on_sec=float(args.uncertain_bridge_on_sec),
             uncertain_bridge_mixed_sec=float(args.uncertain_bridge_mixed_sec),
             uncertain_default_state=str(args.uncertain_default_state),
+            gaze_coverage_threshold=float(args.gaze_coverage_threshold),
         )
         all_rows.extend(rows)
         summary_rows.append(summary)
+        qc_rows.extend(
+            [
+                r
+                for r in rows
+                if r.get("status") == "ok" and str(r.get("gaze_coverage_ok", "0")).strip() != "1"
+            ]
+        )
 
     out_csv = Path(args.out_csv).expanduser()
     out_summary_csv = Path(args.out_summary_csv).expanduser()
+    out_qc_csv = Path(args.out_qc_csv).expanduser()
     write_csv(out_csv, all_rows)
     write_csv(out_summary_csv, summary_rows)
+    write_csv(out_qc_csv, qc_rows)
 
     if not args.skip_xlsx:
         out_xlsx = Path(args.out_xlsx).expanduser()
         out_xlsx.parent.mkdir(parents=True, exist_ok=True)
         windows_df = pd.DataFrame(all_rows)
         summary_df = pd.DataFrame(summary_rows)
+        qc_df = pd.DataFrame(qc_rows)
         with pd.ExcelWriter(out_xlsx) as writer:
             windows_df.to_excel(writer, sheet_name="all_windows", index=False)
             summary_df.to_excel(writer, sheet_name="participant_summary", index=False)
+            qc_df.to_excel(writer, sheet_name="gaze_qc", index=False)
 
     ok_total = sum(int(r.get("ok_windows", 0) or 0) for r in summary_rows)
+    coverage_ok_total = sum(int(r.get("coverage_ok_windows", 0) or 0) for r in summary_rows)
     total_windows = sum(int(r.get("windows_total", 0) or 0) for r in summary_rows)
     print(f"participants={len(summary_rows)}")
     print(f"windows_total={total_windows}")
     print(f"windows_ok={ok_total}")
+    print(f"coverage_ok_windows={coverage_ok_total}")
     print(f"out_csv={out_csv}")
     print(f"out_summary_csv={out_summary_csv}")
+    print(f"out_qc_csv={out_qc_csv}")
     if not args.skip_xlsx:
         print(f"out_xlsx={Path(args.out_xlsx).expanduser()}")
 

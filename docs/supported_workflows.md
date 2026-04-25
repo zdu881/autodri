@@ -26,4 +26,4 @@ Canonical entrypoints use `python -m autodri.cli.<name>`.
 - `python -m autodri.cli.compute_p1_window_metrics`
 - `python -m autodri.cli.build_all_participants_window_metrics`
 - `python -m autodri.cli.build_participants_results_summary`
-
+- `python -m autodri.cli.export_gaze_qc_review_images`

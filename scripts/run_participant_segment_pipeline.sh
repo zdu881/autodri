@@ -13,8 +13,8 @@ WORKSPACE="${AUTODRI_WORKSPACE:-${REPO_ROOT}_workspace}"
 PARTICIPANT="$1"
 WHEEL_GPU="$2"
 
-BASE_PY="/data/home/sim6g/anaconda3/bin/python"
-ADRI_PY="/data/home/sim6g/anaconda3/envs/adri/bin/python"
+BASE_PY="${BASE_PY:-python}"
+ADRI_PY="${ADRI_PY:-$BASE_PY}"
 
 PLAN_CSV="${WORKSPACE}/data/natural_driving/${PARTICIPANT}/analysis/${PARTICIPANT}_infer_plan.current.csv"
 WINDOWS_CSV="${WORKSPACE}/data/natural_driving/${PARTICIPANT}/analysis/${PARTICIPANT}_windows.20s.current.csv"

@@ -148,3 +148,17 @@ def resolve_output_path(
         path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
+
+def resolve_workspace_or_repo_path(raw: str) -> Path:
+    path = Path(str(raw or "").strip()).expanduser()
+    if path.is_absolute():
+        return path
+    repo_candidate = repo_root() / path
+    workspace_candidate = workspace_root() / path
+    if workspace_candidate.exists():
+        return workspace_candidate
+    if repo_candidate.exists():
+        return repo_candidate
+    if path.parts and path.parts[0] in {"data", "models", "artifacts", "archive", "sources"}:
+        return workspace_candidate
+    return repo_candidate
