@@ -1,0 +1,3 @@
+domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2,n_samples,sug_x1,sug_y1,sug_x2,sug_y2,num_face_samples
+car1_person1,6月1日.mp4,-1,-1,-1,-1,600,0,48,1920,1080,80
+car2_person2,12月23日(1).mp4,-1,-1,-1,-1,600,1806,111,3840,2160,80

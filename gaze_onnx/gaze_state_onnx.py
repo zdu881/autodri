@@ -13,6 +13,11 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+
+from ort_runtime import ensure_onnxruntime_cuda_runtime
+
+ensure_onnxruntime_cuda_runtime()
+
 import onnxruntime as ort
 
 
