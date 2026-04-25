@@ -1,17 +1,65 @@
 # autodri
 
-## 1. 工作区准备
+`autodri` is a code-first repository for driver monitoring and gaze-analysis workflows built around naturalistic driving video.
 
-- 代码仓默认只保留源码、轻量文档和最小样例。
-- 把非代码资源放到 `${AUTODRI_WORKSPACE}`。如果不设置环境变量，默认工作区是仓库同级目录 `autodri_workspace/`。
-- 工作区固定目录：
-  - `data/`
-  - `models/`
-  - `artifacts/`
-  - `archive/`
-  - `sources/`
+The repository currently focuses on:
+- driver gaze inference from in-cabin video
+- hand-on-wheel inference
+- ROI assignment and manual review tooling
+- few-shot dataset preparation and model adaptation
+- window-level metric aggregation and QC workflows
 
-常用布局：
+It is structured as an installable Python package with an external workspace for data, models, and generated artifacts.
+
+## Status
+
+This repository is usable as a public codebase, but it is still an actively cleaned-up research/engineering project rather than a polished end-user product.
+
+What is stable:
+- canonical Python entrypoints under `python -m autodri.cli.<name>`
+- workspace-aware path resolution via `${AUTODRI_WORKSPACE}`
+- core gaze / wheel inference workflows
+- window metrics, coverage QC, and summary generation
+
+What is not bundled:
+- raw videos
+- trained model weights
+- large review packs and experiment outputs
+- private study spreadsheets or local working archives
+
+## Core Ideas
+
+- Keep the Git repository small and code-oriented.
+- Keep data, models, reports, and local review artifacts outside the repository.
+- Preserve legacy script paths as thin wrappers so older commands still work.
+- Make every main workflow runnable either as a package CLI or as a compatibility script.
+
+## Repository Layout
+
+```text
+autodri/
+  src/autodri/              Canonical package implementation
+  gaze_onnx/                Legacy-compatible wrappers and related files
+  driver_monitor/           Legacy-compatible wrappers and wheel utilities
+  scripts/                  Small orchestration helpers
+  docs/                     Human-written docs and diagrams
+  tests/                    Smoke and unit tests
+```
+
+The package is split into:
+- `autodri.common`: workspace and shared helpers
+- `autodri.gaze`: gaze runtime code
+- `autodri.wheel`: hand-on-wheel runtime code
+- `autodri.workflows`: data prep, review, training, and metric workflows
+- `autodri.cli`: canonical command entrypoints
+
+## Workspace Model
+
+Non-code resources should live under `${AUTODRI_WORKSPACE}`.
+
+If `${AUTODRI_WORKSPACE}` is unset, the default workspace is a sibling directory named `autodri_workspace/`.
+
+Expected layout:
 
 ```text
 autodri/
@@ -23,58 +71,149 @@ autodri_workspace/
   sources/
 ```
 
-## 2. 支持的规范入口
+Directory meanings:
+- `data/`: local videos and analysis CSVs
+- `models/`: ONNX weights, detector weights, task models
+- `artifacts/`: generated reports, review images, merged tables, transient outputs
+- `archive/`: local-only historical payloads and non-reproducible backups
+- `sources/`: original spreadsheets, third-party sources, and large imported assets
 
-规范命令统一使用：
+## Installation
+
+Python `>=3.10` is required.
+
+Minimal editable install:
 
 ```bash
-python -m autodri.cli.<name>
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-当前支持面：
+For development:
 
-- `gaze_state_cls`
-- `hand_on_wheel`
-- `web_label_tool`
-- `build_participant_video_manifest_from_xlsx`
-- `assign_dual_roi`
-- `build_domains_csv_from_dual_assignment`
-- `create_multidomain_annotation_pack`
-- `build_fewshot_pack`
-- `prepare_cls_dataset_from_pack`
-- `train_gaze_cls`
-- `run_p1_infer_plan`
-- `run_domains_gaze_infer`
-- `build_p1_schedule_windows`
-- `compute_p1_window_metrics`
-- `build_all_participants_window_metrics`
-- `build_participants_results_summary`
+```bash
+pip install -e .[dev]
+```
 
-详情见 [supported_workflows.md](docs/supported_workflows.md)。
+Some workflows also depend on packages not declared in `pyproject.toml`, especially video / model tooling used by the legacy scripts. Check:
+- `driver_monitor/requirements.txt`
+- imports inside the workflow you actually intend to run
 
-## 3. 旧入口映射
+## Quick Start
 
-旧脚本路径仍可运行，但现在只是兼容 wrapper：
+Set the workspace:
 
-- `gaze_onnx/gaze_state_cls.py` -> `python -m autodri.cli.gaze_state_cls`
-- `driver_monitor/hand_on_wheel.py` -> `python -m autodri.cli.hand_on_wheel`
-- `gaze_onnx/experiments/web_label_tool.py` -> `python -m autodri.cli.web_label_tool`
-- `gaze_onnx/experiments/build_participant_video_manifest_from_xlsx.py` -> `python -m autodri.cli.build_participant_video_manifest_from_xlsx`
-- `gaze_onnx/experiments/assign_dual_roi.py` -> `python -m autodri.cli.assign_dual_roi`
-- `gaze_onnx/experiments/build_domains_csv_from_dual_assignment.py` -> `python -m autodri.cli.build_domains_csv_from_dual_assignment`
-- `gaze_onnx/experiments/create_multidomain_annotation_pack.py` -> `python -m autodri.cli.create_multidomain_annotation_pack`
-- `gaze_onnx/experiments/build_fewshot_pack.py` -> `python -m autodri.cli.build_fewshot_pack`
-- `gaze_onnx/experiments/prepare_cls_dataset_from_pack.py` -> `python -m autodri.cli.prepare_cls_dataset_from_pack`
-- `gaze_onnx/experiments/train_gaze_cls.py` -> `python -m autodri.cli.train_gaze_cls`
-- `gaze_onnx/experiments/run_p1_infer_plan.py` -> `python -m autodri.cli.run_p1_infer_plan`
-- `gaze_onnx/experiments/run_domains_gaze_infer.py` -> `python -m autodri.cli.run_domains_gaze_infer`
-- `gaze_onnx/experiments/build_p1_schedule_windows.py` -> `python -m autodri.cli.build_p1_schedule_windows`
-- `gaze_onnx/experiments/compute_p1_window_metrics.py` -> `python -m autodri.cli.compute_p1_window_metrics`
-- `gaze_onnx/experiments/build_all_participants_window_metrics.py` -> `python -m autodri.cli.build_all_participants_window_metrics`
-- `gaze_onnx/experiments/build_participants_results_summary.py` -> `python -m autodri.cli.build_participants_results_summary`
+```bash
+export AUTODRI_WORKSPACE=/path/to/autodri_workspace
+```
 
-## 4. Legacy 说明
+Inspect supported commands:
 
-- 数据、模型、报表和历史标注备份不再是仓库源码的一部分。
-- 脚本默认优先从 `${AUTODRI_WORKSPACE}` 解析资源；必要时才回退到旧 repo 路径，并打印弃用警告。
-- 需要归档的历史内容见 [legacy_inventory.md](docs/legacy_inventory.md)。
+```bash
+python -m autodri.cli.gaze_state_cls --help
+python -m autodri.cli.hand_on_wheel --help
+python -m autodri.cli.compute_p1_window_metrics --help
+```
+
+Typical examples:
+
+```bash
+python -m autodri.cli.gaze_state_cls \
+  --video "$AUTODRI_WORKSPACE/data/example.mp4" \
+  --scrfd "$AUTODRI_WORKSPACE/models/scrfd_person_2.5g.onnx" \
+  --cls-model "$AUTODRI_WORKSPACE/models/gaze_cls_yolov8n.onnx" \
+  --csv "$AUTODRI_WORKSPACE/artifacts/example.gaze.csv" \
+  --no-video
+```
+
+```bash
+python -m autodri.cli.hand_on_wheel \
+  --video "$AUTODRI_WORKSPACE/data/example.mp4" \
+  --weights "$AUTODRI_WORKSPACE/models/groundingdino_swint_ogc.pth" \
+  --state-csv "$AUTODRI_WORKSPACE/artifacts/example.wheel.csv" \
+  --no-video
+```
+
+```bash
+python -m autodri.cli.build_all_participants_window_metrics \
+  --gaze-coverage-threshold 0.98
+```
+
+See [docs/supported_workflows.md](docs/supported_workflows.md) for the maintained command surface.
+
+## Supported Canonical Entry Points
+
+Main commands currently intended for regular use:
+
+- `python -m autodri.cli.gaze_state_cls`
+- `python -m autodri.cli.hand_on_wheel`
+- `python -m autodri.cli.web_label_tool`
+- `python -m autodri.cli.build_participant_video_manifest_from_xlsx`
+- `python -m autodri.cli.assign_dual_roi`
+- `python -m autodri.cli.build_domains_csv_from_dual_assignment`
+- `python -m autodri.cli.create_multidomain_annotation_pack`
+- `python -m autodri.cli.build_fewshot_pack`
+- `python -m autodri.cli.prepare_cls_dataset_from_pack`
+- `python -m autodri.cli.train_gaze_cls`
+- `python -m autodri.cli.run_p1_infer_plan`
+- `python -m autodri.cli.run_domains_gaze_infer`
+- `python -m autodri.cli.build_p1_schedule_windows`
+- `python -m autodri.cli.compute_p1_window_metrics`
+- `python -m autodri.cli.build_all_participants_window_metrics`
+- `python -m autodri.cli.build_participants_results_summary`
+- `python -m autodri.cli.export_gaze_qc_review_images`
+
+## Legacy Compatibility
+
+Legacy script paths are still present as thin wrappers. For example:
+
+- `gaze_onnx/gaze_state_cls.py`
+- `driver_monitor/hand_on_wheel.py`
+- `gaze_onnx/experiments/compute_p1_window_metrics.py`
+- `gaze_onnx/experiments/run_p1_infer_plan.py`
+
+They forward to the package implementation and are retained to avoid breaking existing local workflows.
+
+## Development
+
+Run tests:
+
+```bash
+pytest
+```
+
+Useful targeted checks:
+
+```bash
+python -m autodri.cli.build_participants_results_summary --help
+python -m autodri.cli.build_all_participants_window_metrics --help
+python -m autodri.cli.export_gaze_qc_review_images --help
+```
+
+## Documentation
+
+Useful docs in this repository:
+- [docs/supported_workflows.md](docs/supported_workflows.md)
+- [docs/legacy_inventory.md](docs/legacy_inventory.md)
+- [docs/annotation_quickstart.md](docs/annotation_quickstart.md)
+- [docs/annotation_workflow.md](docs/annotation_workflow.md)
+- [docs/onnxruntime_cuda_fix.md](docs/onnxruntime_cuda_fix.md)
+- [docs/perclos_blink_metrics.md](docs/perclos_blink_metrics.md)
+
+## Limitations
+
+- The repository does not ship sample models or sample videos.
+- Several workflows are still research-oriented and assume domain-specific CSV schemas.
+- Some legacy scripts remain participant- or study-specific even if they are now versioned.
+- Public release quality is much higher than before, but not every workflow has a complete fixture dataset.
+
+## What Stays Out Of Git
+
+The repository intentionally excludes:
+- raw study videos
+- local model checkpoints and large weight files
+- generated review images and QC exports
+- local archive payloads and manual backup packs
+
+See [docs/legacy_inventory.md](docs/legacy_inventory.md) for the current boundary.
