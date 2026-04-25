@@ -1,0 +1,144 @@
+<svg width="1680" height="980" viewBox="0 0 1680 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1680" y2="980" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7FAFC"/>
+      <stop offset="1" stop-color="#ECF2F6"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FAFBFD"/>
+    </linearGradient>
+    <linearGradient id="slate" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E8EEF5"/>
+      <stop offset="1" stop-color="#D7E1EB"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E0F8ED"/>
+      <stop offset="1" stop-color="#C2ECD9"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF1DB"/>
+      <stop offset="1" stop-color="#FFD9A8"/>
+    </linearGradient>
+    <linearGradient id="rose" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFE9E3"/>
+      <stop offset="1" stop-color="#FFD2C7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#0F172A" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="10" refY="7" orient="auto">
+      <path d="M0 0L14 7L0 14V0Z" fill="#475569"/>
+    </marker>
+    <marker id="arrowWarm" markerWidth="14" markerHeight="14" refX="10" refY="7" orient="auto">
+      <path d="M0 0L14 7L0 14V0Z" fill="#C2410C"/>
+    </marker>
+    <style>
+      .title { font: 700 38px 'DejaVu Sans', Arial, sans-serif; fill: #16212B; }
+      .subtitle { font: 500 18px 'DejaVu Sans', Arial, sans-serif; fill: #5A6878; }
+      .tag { font: 700 16px 'DejaVu Sans', Arial, sans-serif; fill: #273444; letter-spacing: 0.6px; }
+      .heading { font: 700 24px 'DejaVu Sans', Arial, sans-serif; fill: #1E293B; }
+      .body { font: 500 16px 'DejaVu Sans', Arial, sans-serif; fill: #334155; }
+      .badge { font: 700 13px 'DejaVu Sans', Arial, sans-serif; fill: #1F2937; }
+      .legend { font: 600 14px 'DejaVu Sans', Arial, sans-serif; fill: #475569; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1680" height="980" fill="url(#bg)"/>
+  <text x="78" y="76" class="title">Few-Shot Driver Gaze Monitoring Pipeline</text>
+  <text x="78" y="110" class="subtitle">Paper-oriented overview emphasizing participant adaptation, temporal stability, and behavior-level outputs.</text>
+
+  <rect x="56" y="146" width="1568" height="786" rx="34" fill="url(#paper)" stroke="#D9E3EC" filter="url(#shadow)"/>
+
+  <rect x="96" y="192" width="444" height="196" rx="26" fill="url(#slate)" stroke="#A8BACB"/>
+  <text x="124" y="228" class="tag">A  TARGET VIDEOS AND TARGET SEGMENTS</text>
+  <text x="124" y="260" class="heading">Construct the experiment-ready input set</text>
+  <text x="124" y="292" class="body">The workflow begins from study records and keeps only</text>
+  <text x="124" y="318" class="body">the target videos and target time segments needed for analysis.</text>
+  <rect x="124" y="338" width="154" height="36" rx="12" fill="#FFFFFF" stroke="#B7C7D5"/>
+  <text x="148" y="361" class="badge">study records</text>
+  <rect x="292" y="338" width="154" height="36" rx="12" fill="#FFFFFF" stroke="#B7C7D5"/>
+  <text x="320" y="361" class="badge">target segments</text>
+
+  <rect x="618" y="192" width="444" height="196" rx="26" fill="url(#amber)" stroke="#D7A15C"/>
+  <text x="646" y="228" class="tag">B  DRIVER-REGION PREPROCESSING</text>
+  <text x="646" y="260" class="heading">Use the edited gaze clips as the visual input</text>
+  <text x="646" y="292" class="body">In the paper narrative, driver-region extraction is treated</text>
+  <text x="646" y="318" class="body">as preprocessing rather than the main technical contribution.</text>
+  <rect x="646" y="338" width="198" height="36" rx="12" fill="#FFF9F1" stroke="#D7A15C"/>
+  <text x="664" y="361" class="badge">driver-face / gaze-region crop</text>
+
+  <rect x="1140" y="192" width="444" height="196" rx="26" fill="url(#rose)" stroke="#DD8B7A"/>
+  <text x="1168" y="228" class="tag">C  ANNOTATION AND CLEANING</text>
+  <text x="1168" y="260" class="heading">Label valid gaze samples and filter invalid ones</text>
+  <text x="1168" y="292" class="body">Manual annotation assigns the main gaze classes and uses</text>
+  <text x="1168" y="318" class="body">`Other` to absorb invalid or out-of-scope samples.</text>
+  <rect x="1168" y="338" width="66" height="30" rx="12" fill="#D9F99D"/>
+  <text x="1182" y="358" class="badge">Forward</text>
+  <rect x="1244" y="338" width="90" height="30" rx="12" fill="#E2E8F0"/>
+  <text x="1258" y="358" class="badge">Non-Forward</text>
+  <rect x="1344" y="338" width="62" height="30" rx="12" fill="#E2E8F0"/>
+  <text x="1361" y="358" class="badge">In-Car</text>
+  <rect x="1416" y="338" width="56" height="30" rx="12" fill="#FECACA"/>
+  <text x="1430" y="358" class="badge">Other</text>
+
+  <rect x="96" y="456" width="444" height="196" rx="26" fill="url(#mint)" stroke="#72C09A"/>
+  <text x="124" y="492" class="tag">D  FEW-SHOT ADAPTATION</text>
+  <text x="124" y="524" class="heading">Build a compact participant-specific training subset</text>
+  <text x="124" y="556" class="body">A small participant-specific subset, typically 200-shot,</text>
+  <text x="124" y="582" class="body">is used to rapidly calibrate the model to a new domain.</text>
+  <rect x="124" y="602" width="146" height="36" rx="12" fill="#FFFFFF" stroke="#98D7B7"/>
+  <text x="152" y="625" class="badge">few-shot subset</text>
+  <rect x="284" y="602" width="156" height="36" rx="12" fill="#FFFFFF" stroke="#98D7B7"/>
+  <text x="314" y="625" class="badge">participant split</text>
+
+  <rect x="618" y="456" width="444" height="196" rx="26" fill="url(#slate)" stroke="#A8BACB"/>
+  <text x="646" y="492" class="tag">E  PARTICIPANT-SPECIFIC MODEL</text>
+  <text x="646" y="524" class="heading">Fine-tune and export a deployment model</text>
+  <text x="646" y="556" class="body">The deployment unit is a participant-adapted model,</text>
+  <text x="646" y="582" class="body">not one universal shared fine-tuned classifier.</text>
+  <rect x="646" y="602" width="168" height="36" rx="12" fill="#FFFFFF" stroke="#B7C7D5"/>
+  <text x="676" y="625" class="badge">YOLOv8-cls fine-tune</text>
+  <rect x="830" y="602" width="122" height="36" rx="12" fill="#FFFFFF" stroke="#B7C7D5"/>
+  <text x="862" y="625" class="badge">ONNX export</text>
+
+  <rect x="1140" y="456" width="444" height="196" rx="26" fill="url(#blue)" stroke="#8AA7D5"/>
+  <text x="1168" y="492" class="tag">F  SEGMENT-LEVEL INFERENCE</text>
+  <text x="1168" y="524" class="heading">Run inference on the target driving segments</text>
+  <text x="1168" y="556" class="body">The system performs segment-level gaze inference instead of</text>
+  <text x="1168" y="582" class="body">treating the full long video as the only deployment unit.</text>
+  <rect x="1168" y="602" width="116" height="36" rx="12" fill="#FFFFFF" stroke="#AFC4E8"/>
+  <text x="1200" y="625" class="badge">gaze CSV</text>
+  <rect x="1298" y="602" width="154" height="36" rx="12" fill="#FFFFFF" stroke="#AFC4E8"/>
+  <text x="1324" y="625" class="badge">segment output</text>
+
+  <rect x="314" y="720" width="512" height="156" rx="26" fill="#FFF8F2" stroke="#E2B77F"/>
+  <text x="342" y="756" class="tag">G  TEMPORAL STABILIZATION</text>
+  <text x="342" y="788" class="heading">Suppress short glitches in frame-level predictions</text>
+  <text x="342" y="820" class="body">Lightweight temporal rules reduce short-term flicker and preserve</text>
+  <text x="342" y="846" class="body">more stable segment-level gaze trajectories.</text>
+
+  <rect x="888" y="720" width="512" height="156" rx="26" fill="#FFF6F5" stroke="#DD8B7A"/>
+  <text x="916" y="756" class="tag">H  WINDOW-LEVEL BEHAVIOR METRICS</text>
+  <text x="916" y="788" class="heading">Aggregate outputs into interpretable behavior statistics</text>
+  <text x="916" y="820" class="body">Frame-level gaze and hand-on-wheel outputs are converted into</text>
+  <text x="916" y="846" class="body">window-level metrics such as off-path ratio and glance rate.</text>
+
+  <rect x="916" y="786" width="164" height="32" rx="12" fill="#FFFFFF" stroke="#DD8B7A"/>
+  <text x="942" y="807" class="badge">% time off-path</text>
+  <rect x="1094" y="786" width="120" height="32" rx="12" fill="#FFFFFF" stroke="#DD8B7A"/>
+  <text x="1122" y="807" class="badge">glance rate</text>
+  <rect x="1228" y="786" width="144" height="32" rx="12" fill="#FFFFFF" stroke="#DD8B7A"/>
+  <text x="1254" y="807" class="badge">wheel ratio</text>
+
+  <path d="M540 290H604" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M1062 290H1126" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M318 388V442" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M840 388V442" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M1362 388V442" stroke="#475569" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M1362 652V708H1144" stroke="#475569" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+  <path d="M840 652V708H570" stroke="#475569" stroke-width="4" fill="none" marker-end="url(#arrow)"/>
+
+  <path d="M1144 878V930H540V878" stroke="#C2410C" stroke-width="4" stroke-dasharray="12 10" fill="none" marker-end="url(#arrowWarm)"/>
+  <text x="678" y="954" class="legend">Model errors can trigger additional annotation and few-shot refresh.</text>
+</svg>

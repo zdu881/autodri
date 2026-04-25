@@ -1,0 +1,10 @@
+domain_id,video,roi_x1,roi_y1,roi_x2,roi_y2,n_samples,source_swapped,source_uncertain
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第一批/12.17 074730-090530/12月23日(1).mp4,1900,660,3300,1400,32,0,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第一批/12.17 175310-192310/12月23日.mp4,1900,660,3300,1400,32,0,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第一批/12.18 075340-090840/12月23日(1).mp4,1900,660,3300,1400,32,0,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第一批/12.18 175530-192230/12月23日(1).mp4,1900,660,3300,1400,24,0,0
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第二批/12.18 192910-195610/12月23日.mp4,1900,660,3300,1400,24,0,0
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第二批/12.19 080900-093300/12月23日(1).mp4,1900,660,3300,1400,32,1,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第二批/12.19 213940-223330/12月23日.mp4,1900,660,3300,1400,32,1,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第二批/12.20 074500-090900/12月23日(1).mp4,1900,660,3300,1400,32,1,1
+p7,/data/home/sim6g/autodri/data/natural_driving/p7/剪辑好的视频/第二批/12.20 174800-194450/12月23日.mp4,1900,660,3300,1400,24,0,0

@@ -1,0 +1,7 @@
+# Core runtime
+numpy
+opencv-python
+torch
+
+# Install GroundingDINO directly from upstream VCS (pinned commit).
+groundingdino @ git+https://github.com/IDEA-Research/GroundingDINO.git@856dde20aee659246248e20734ef9ba5214f5e44

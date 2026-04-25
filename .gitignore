@@ -2,6 +2,15 @@ __pycache__/
 *.pyc
 .venv/
 .ipynb_checkpoints/
+.vscode/
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.codex
 
 # Artifacts
 driver_monitor/output/
@@ -16,3 +25,46 @@ GroundingDINO/
 models/
 l2cs.onnx.tar.xz
 6月1日.mp4
+12月23日(1).mp4
+yolo26n.pt
+yolo11n.pt
+yolov8n-cls.pt
+自然驾驶_视频标注情况 - *.csv
+data/
+
+# Training/runtime outputs
+runs/
+gaze_onnx/experiments/runs_cls/
+gaze_onnx/experiments/web_label_*.log
+
+# Large annotation and dataset payloads (keep scripts/manifests in git)
+gaze_onnx/experiments/anno_*/
+gaze_onnx/experiments/cls_dataset*/
+gaze_onnx/experiments/samples_*/
+
+# Keep ROI metadata text/csv, ignore heavy reference images
+gaze_onnx/experiments/roi_refs/**/*.jpg
+
+# Generated participant ROI packs are local work artifacts
+gaze_onnx/experiments/roi_refs/p*_label_pack/
+
+# In-repo fallback workspace
+autodri_workspace/
+workspace/
+
+# Local-only docs, review payloads, and drafts
+docs/paper_draft_*.md
+docs/paper_method_workflow*.md
+docs/wheel_manual_verification.current.md
+docs/wheel_student_plan.md
+docs/wheel_context_compact.md
+docs/p1_gaze_blank_examples/
+docs/wheel_rows_zero_checks/
+
+# Local-only study manifests and working notes
+gaze_onnx/experiments/manifests/*.readable.wip.csv
+gaze_onnx/experiments/manifests/*_target_videos.v1.csv
+gaze_onnx/experiments/manifests/*_gaze_domains*.v1.csv
+gaze_onnx/experiments/manifests/*same_as_p1_v1.csv
+gaze_onnx/experiments/manifests/target_segments.unified.current.csv
+gaze_onnx/experiments/manifests/target_videos.unified.current.csv
