@@ -4,6 +4,9 @@ import csv
 import math
 from pathlib import Path
 
+import numpy as np
+from PIL import Image
+
 from autodri.aoi.equivalence import (
     DEFAULT_LABELS,
     PRIMARY_LABELS,
@@ -217,3 +220,22 @@ def test_mcnemar_and_holm_adjustment_for_paired_comparisons() -> None:
     assert result["baseline_only_correct"] == 0
     assert math.isclose(result["p_value"], 1.0, rel_tol=1e-6)
     assert adjusted == [0.03, 0.06, 0.06]
+
+
+def test_onnx_preprocessing_uses_bilinear_resize_like_torchvision(tmp_path: Path) -> None:
+    from autodri.workflows.aoi_equivalence import _load_normalized_image
+
+    image_path = tmp_path / "tiny.png"
+    image = Image.new("RGB", (2, 2))
+    image.putdata([(0, 0, 0), (255, 0, 0), (0, 255, 0), (0, 0, 255)])
+    image.save(image_path)
+
+    actual = _load_normalized_image(image_path, 4)
+    resized = np.asarray(image.resize((4, 4), resample=Image.Resampling.BILINEAR), dtype=np.float32) / 255.0
+    expected = np.transpose(
+        (resized - np.asarray([0.485, 0.456, 0.406], dtype=np.float32))
+        / np.asarray([0.229, 0.224, 0.225], dtype=np.float32),
+        (2, 0, 1),
+    )
+
+    assert np.allclose(actual, expected)

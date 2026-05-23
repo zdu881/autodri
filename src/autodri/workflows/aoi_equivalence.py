@@ -443,7 +443,10 @@ def _load_normalized_image(path: Path, imgsz: int):
     from PIL import Image
 
     with Image.open(path) as image:
-        arr = np.asarray(image.convert("RGB").resize((imgsz, imgsz)), dtype=np.float32) / 255.0
+        arr = np.asarray(
+            image.convert("RGB").resize((imgsz, imgsz), resample=Image.Resampling.BILINEAR),
+            dtype=np.float32,
+        ) / 255.0
     mean = np.asarray([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
     arr = (arr - mean) / std
