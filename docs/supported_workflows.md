@@ -17,9 +17,11 @@ Canonical entrypoints use `python -m autodri.cli.<name>`.
 - `python -m autodri.cli.build_fewshot_pack`
 - `python -m autodri.cli.prepare_cls_dataset_from_pack`
 - `python -m autodri.cli.train_gaze_cls`
+- `python -m autodri.cli.train_aoi_backbone`
 
 ## Inference And Metrics
 
+- `python -m autodri.cli.aoi_equivalence`
 - `python -m autodri.cli.run_p1_infer_plan`
 - `python -m autodri.cli.run_domains_gaze_infer`
 - `python -m autodri.cli.build_p1_schedule_windows`

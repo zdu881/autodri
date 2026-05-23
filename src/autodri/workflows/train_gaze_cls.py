@@ -46,6 +46,7 @@ def parse_args():
     )
     p.add_argument("--dropout", type=float, default=0.2, help="Classifier dropout (0~1)")
     p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
 
@@ -68,6 +69,7 @@ def train(args):
         workers=args.workers,
         dropout=max(0.0, min(0.9, args.dropout)),
         cos_lr=True,
+        seed=args.seed,
     )
 
     if args.aug_preset == "robust":

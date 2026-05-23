@@ -16,6 +16,11 @@ CASES = [
     ("autodri.cli.build_participants_results_summary", REPO_ROOT / "gaze_onnx/experiments/build_participants_results_summary.py"),
 ]
 
+CLI_ONLY_CASES = [
+    "autodri.cli.aoi_equivalence",
+    "autodri.cli.train_aoi_backbone",
+]
+
 
 @pytest.mark.parametrize(("module_name", "legacy_path"), CASES)
 def test_cli_help(module_name: str, legacy_path: Path) -> None:
@@ -34,3 +39,15 @@ def test_cli_help(module_name: str, legacy_path: Path) -> None:
         text=True,
     )
     assert legacy.returncode == 0, legacy.stderr
+
+
+@pytest.mark.parametrize("module_name", CLI_ONLY_CASES)
+def test_cli_only_help(module_name: str) -> None:
+    proc = subprocess.run(
+        [sys.executable, "-m", module_name, "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    assert proc.returncode == 0, proc.stderr
