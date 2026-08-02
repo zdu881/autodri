@@ -15,6 +15,7 @@
 \setcopyright{none}
 \acmDOI{}
 \acmISBN{}
+\newcommand{\autouitablefont}{\footnotesize}
 
 \begin{document}
 
@@ -28,28 +29,26 @@
 \email{anonymous@example.com}
 
 \begin{abstract}
-Naturalistic driving studies increasingly rely on in-cabin video to study
-driver attention and supervision, yet many datasets are collected without
-synchronized eye tracking or frame-level driver-state labels. This gap
-creates a methodological problem for downstream behavioral analysis:
-researchers need scalable measures of where drivers look and whether
-their hands remain on the steering wheel, but fully manual video coding
-does not scale to long-duration, multi-participant recordings. This
-work-in-progress paper presents an auditable human-in-the-loop workflow
-for converting ordinary in-cabin video into area-of-interest (AOI) glance
-categories and hand-on-wheel state variables. The workflow combines
-reviewed driver-region specification, consensus AOI annotation,
-participant-specific calibration, frame-level inference, temporal
-stabilization, hand/wheel detection, hand/wheel state distillation,
-and window-level behavioral metric extraction. We report preliminary
-evidence from 15 naturalistic-driving
-participants, including 301 processed gaze/wheel segments, approximately
-3.91 million frame-level outputs, 7,306 coverage-qualified 20 s behavior
-windows, a five-seed 14-participant leave-one-participant-out AOI
-experiment, a no-leak few-shot adaptation curve, a temporal stabilization
-ablation, hand-on-wheel review subsets, a GroundingDINO-to-YOLO
-state-distillation check, and ONNX deployment checks. The
-contribution is not a new gaze-estimation backbone or an eye-tracking
+Naturalistic driving studies often rely on in-cabin video to study driver
+attention and supervision, yet many datasets lack synchronized eye
+tracking or frame-level driver-state labels. This creates a measurement
+gap for downstream behavioral analysis: researchers need scalable
+features that describe where drivers look and whether their hands remain
+on the steering wheel, but fully manual coding does not scale to long
+recordings with many participants. This work-in-progress paper presents
+an auditable human-in-the-loop workflow that converts ordinary in-cabin
+video into area-of-interest (AOI) glance categories and hand-on-wheel
+state variables. The workflow combines reviewed driver ROI
+specification, consensus AOI annotation, participant calibration,
+frame-level inference, temporal stabilization, hand/wheel detection,
+state distillation, and window-level metric extraction. We report
+preliminary evidence from 15 participants, including 301 processed
+gaze/wheel segments, about 3.91 million frame-level outputs, 7,306
+coverage-qualified behavior windows, a 14-participant AOI
+leave-one-participant-out experiment, a few-shot adaptation curve, a
+temporal stabilization ablation, hand-on-wheel review subsets, a
+teacher-student hand-state distillation check, and ONNX deployment
+checks. The contribution is not a new gaze backbone or an eye-tracking
 replacement. Instead, the paper defines a reusable annotation and
 validation workflow for downstream studies that require transparent,
 reviewable driver-state features from naturalistic video.
@@ -79,62 +78,54 @@ reviewable driver-state features from naturalistic video.
 
 \section{Introduction}
 
-Naturalistic driving studies are valuable because they preserve the
-conditions under which driver supervision actually occurs: real traffic,
-real vehicle interfaces, variable lighting, different cabin layouts, and
-drivers who are not constrained by laboratory tasks. These strengths also
-make the data difficult to analyze. Many in-cabin video datasets are
-recorded with ordinary cameras rather than synchronized eye trackers. As
-a result, they do not directly contain fixations, point-of-regard
-estimates, or area-of-interest (AOI) glance labels. Before such datasets
-can support questions about driver monitoring, distraction, takeover
-readiness, or engagement with driver-assistance systems, researchers must
-first turn video into behavioral variables.
+Naturalistic driving studies preserve real traffic, cabin layouts,
+lighting, and driver behavior, but many in-cabin video datasets are
+recorded with ordinary cameras rather than synchronized eye trackers.
+They therefore lack fixations, point-of-regard estimates, and
+area-of-interest (AOI) glance labels. Before such datasets can support
+questions about monitoring, distraction, takeover readiness, or
+automation engagement, researchers must first turn video into behavioral
+variables.
 
-Manual coding remains the most interpretable way to produce these
-variables, but it is difficult to scale. Frame-level or clip-level coding
-requires substantial labor, and reliability checks require preservation
-of pre-consensus labels or review artifacts. These costs become a
-bottleneck when a study grows from a small set of clips to hundreds of
-segments and millions of frames. Fully automated computer vision is
-appealing, but a black-box classifier is not sufficient for naturalistic
-driving data. A visually plausible prediction can still be invalid if the
-driver crop is wrong, if a passenger appears in the selected region, if a
-face detector fails under glare or occlusion, or if a short prediction
-flicker is interpreted as a behavioral event.
+Manual coding is interpretable but difficult to scale because it requires
+coder training, consensus review, and reliability audit. Fully automated
+vision is attractive, but a black-box classifier is not sufficient for
+naturalistic driving data: a prediction can be invalid when the driver
+crop is wrong, a passenger appears in the selected region, a face detector
+fails, or short flicker is interpreted as a behavioral event.
 
-This paper treats driver-state extraction as a measurement workflow
-rather than a single model score. Recent models provide useful building
-blocks: YOLOv8-cls offers a compact train-export-deploy path for image
-classification \cite{jocher2023ultralytics}; SCRFD provides face evidence
-that can support driver-region review \cite{guo2021scrfd}; and
-GroundingDINO can localize open-vocabulary objects such as hands and
-steering wheels \cite{liu2023groundingdino}. However, these models do not
-define the study geometry or the behavioral semantics by themselves. In
-our workflow, humans specify or confirm driver regions, label AOI
-semantics, review model outputs, and inspect uncertain hand-state cases.
-Computer vision is used to extend those decisions across long video
-segments while preserving checkpoints that can be audited.
+Prior work motivates coarse regions and behavioral states rather than
+exact gaze or hand geometry. Video-based driver visual behavior standards
+define glance measures as observable AOI episodes and durations
+\cite{saeJ2396,iso15007}. Gaze-region work shows that head pose,
+eye-region appearance, and scene geometry can support roadway or
+in-vehicle glance classification without eye tracking
+\cite{fridman2016drivergaze,fridman2016robustgaze}. For steering
+engagement, recent work has studied driver hand detection, synthetic
+hands-on-wheel data, and in-vehicle hands on/off prediction
+\cite{borghi2018handswheel,yudkin2022handsup,pyeon2023handsonoff}.
+Our contribution is complementary: we do not claim a new detector or an
+external benchmark result, but define an auditable workflow that turns
+ordinary naturalistic in-cabin video into documented AOI and hand-state
+features.
 
-The resulting measures should be interpreted as AOI-level driver-state
-features, not continuous gaze estimates or substitutes for eye tracking
-\cite{fridman2016drivergaze,saeJ2396,iso15007}. The workflow is intended
-for downstream naturalistic-driving studies that need features such as
-forward-roadway time, off-path glance episodes, in-vehicle glances, and
-hands-on/off-wheel ratios. In this WIP, we make four contributions.
-First, we describe a human-in-the-loop annotation workflow that separates
-ROI provenance, AOI semantics, temporal stability, hand-state review, and
-window-level aggregation. Second, we report preliminary evidence for the
-main checkpoints using reviewable artifacts from 15 participants. Third,
-we evaluate model and deployment choices so that the workflow can be
-treated as a measurable annotation method rather than an undocumented
-preprocessing step. Fourth, we add a state-distillation checkpoint for
-the slow hand/wheel branch: GroundingDINO is used as a teacher on selected
-frames, the resulting stable states are converted into a compact student
-dataset, and the student is evaluated by teacher-state agreement and
-runtime before any large-scale replacement is claimed.
+We therefore treat driver-state extraction as a measurement workflow
+rather than a single model score. YOLOv8-cls provides a compact
+train-export-deploy path \cite{jocher2023ultralytics}; SCRFD supports
+driver ROI review \cite{guo2021scrfd}; and GroundingDINO localizes
+text-prompted hands and steering wheels \cite{liu2023groundingdino}.
+Humans still define the study geometry and semantics: they confirm driver
+regions, label AOIs, review outputs, and inspect uncertain hand states.
 
-\section{Workflow Design}
+The resulting measures are AOI-level driver-state features, not
+continuous gaze estimates or eye-tracking substitutes
+\cite{fridman2016drivergaze,saeJ2396,iso15007}. This WIP defines the
+workflow, reports preliminary checkpoint evidence from 15 participants,
+evaluates model/deployment choices, and adds a state-distillation
+checkpoint for the slow hand/wheel branch before any large-scale student
+replacement is claimed.
+
+\section{Method}
 
 Figure~\ref{fig:workflow} summarizes the workflow. The input is a set of
 target videos and analysis segments defined by a study spreadsheet. The
@@ -143,9 +134,8 @@ constructs annotation packs, collects human AOI labels, trains
 participant-specific AOI classifiers, exports deployment models, runs
 segment-level inference, stabilizes frame-level predictions, estimates
 hand-on-wheel states, optionally distills GroundingDINO teacher outputs
-into a lightweight state student, and aggregates the
-resulting streams into
-behavioral windows.
+into a lightweight state student, and aggregates the resulting streams
+into behavioral windows.
 
 \begin{figure}[t]
     \centering
@@ -169,11 +159,9 @@ roadway. \textit{In-Car} denotes attention toward in-vehicle targets such
 as the instrument cluster, center display, mirrors, or controls.
 \textit{Non-Forward} denotes attention away from both the forward roadway
 and in-vehicle targets. A fourth label, \textit{Other}, is used for
-invalid or non-interpretable frames, including wrong ROI, no visible
-driver, missing or unusable face evidence, non-target person, severe
-artifact, or insufficient visual information. The primary behavior
-metrics use the three valid AOI classes, while \textit{Other} is retained
-for data cleaning, model training, and secondary error analysis.
+invalid or non-interpretable frames. Primary behavior metrics use the
+three valid AOI classes, while \textit{Other} is retained for cleaning,
+model training, and secondary error analysis.
 
 The hand branch estimates steering-wheel engagement as \textit{ON},
 \textit{OFF}, or \textit{UNCERTAIN}. These states are derived from hand
@@ -182,42 +170,35 @@ state rules. For window-level analysis, hand-state samples are aligned
 with the gaze stream so that researchers can compute both overall and
 AOI-conditioned hands-on/off ratios.
 
-\subsection{Human ROI Specification}
+\subsection{Human ROI and AOI Annotation}
 
-ROI selection is treated as part of the measurement method rather than as
-an invisible preprocessing step. In simple video layouts, a reviewer
-records the driver ROI directly. In dual-panel or multi-view layouts,
-face-detection evidence is used to rank candidate driver panels, but the
-selected panel remains subject to visual confirmation. When automatic
-assignment is uncertain, the workflow exports grid-overlay reference
-images and fill-in manifests for manual correction. This design matters
-because downstream AOI and hand-state predictions are only meaningful if
-the crop contains the intended driver and the intended body region.
-
-\subsection{Human AOI Annotation}
+ROI selection is part of the measurement method, not an invisible
+preprocessing step. Reviewers record simple driver ROIs directly; in
+dual-panel or multi-view layouts, face evidence ranks candidate panels
+but the selected panel remains visually confirmed. Uncertain assignments
+export grid-overlay references and fill-in manifests for manual
+correction.
 
 After ROI specification, representative frames are sampled across each
-target video's temporal range and presented for human annotation. Coders
-assign each ROI crop to \textit{Forward}, \textit{In-Car},
-\textit{Non-Forward}, or \textit{Other}. The \textit{Other} class is not
-treated as a nuisance afterthought. Naturalistic recordings often contain
-systematic invalid samples caused by occlusion, lighting, camera layout,
-or non-driver faces. Forcing these samples into a valid AOI would
-contaminate both model training and downstream behavior summaries.
+target video and coded as \textit{Forward}, \textit{In-Car},
+\textit{Non-Forward}, or \textit{Other}. The \textit{Other} class
+captures systematic invalid samples from occlusion, lighting, camera
+layout, or non-driver faces, preventing these frames from contaminating
+valid AOI metrics.
 
-The annotation process is designed to preserve consensus decisions while
-also documenting reliability limits. When coder-specific pre-consensus
-labels are available, chance-corrected agreement can be reported with
-Cohen's \(\kappa\) \cite{cohen1960coefficient}; Fleiss' \(\kappa\) is
-appropriate only when more than two coders independently label the same
-items \cite{fleiss1971}. In the current archive, consensus labels and
-disagreement flags were retained, but complete coder-specific
-pre-consensus vectors were not retained for every reviewed sample. We
-therefore treat aggregate pre-consensus agreement as descriptive evidence
-and report the absence of a reconstructable chance-corrected statistic as
-a limitation.
+The annotation process preserves consensus decisions while keeping
+reliability audit as an explicit WIP activity. Coders are trained on a
+shared manual and exemplar frames, production labels are reviewed before
+consensus, and disagreements are resolved through joint discussion.
+Chance-corrected reliability indices such as Cohen's \(\kappa\)
+\cite{cohen1960coefficient} are useful when a completed double-coded
+audit set is available; Fleiss' \(\kappa\) is appropriate only when more
+than two coders independently label the same items \cite{fleiss1971}.
+Because the present WIP is still in the feature-construction stage, we
+treat aggregate agreement as descriptive process evidence and leave the
+formal chance-corrected reliability audit for the next validation pass.
 
-\subsection{AOI Classification and Participant Adaptation}
+\subsection{AOI Classification and Temporal Stabilization}
 
 The operational AOI branch uses a YOLOv8-cls classifier because it
 provides a compact training and deployment path. Participant-specific
@@ -228,32 +209,24 @@ layout-specific target-face rule rejects implausible identity jumps and
 selects the driver face; the selected crop is then classified into the
 four AOI labels.
 
-Because deployment convenience does not by itself establish measurement
-validity, the repository also includes a model-comparison workflow that
-trains YOLOv8-cls, ResNet, EfficientNet, ConvNeXt, and ViT backbones under
-a common held-out-participant protocol. The comparison is not meant to
-find a universally best backbone. It tests whether the deployment choice
-has an irreplaceable accuracy advantage, and whether alternative
-backbones remain viable when participant generalization or calibration
-budget is the central concern.
+Deployment convenience does not by itself establish measurement validity.
+For that reason, the repository also includes a model-comparison workflow
+that trains YOLOv8-cls, ResNet, EfficientNet, ConvNeXt, and ViT backbones
+under a common participant holdout protocol. The comparison is not meant
+to find a universal best backbone; it tests whether the deployment choice
+has an irreplaceable accuracy advantage under generalization and
+calibration constraints.
 
-\subsection{Temporal Stabilization}
-
-Frame-level model outputs are not used directly as behavioral events.
-Naturalistic video contains short face-detection dropouts, occlusions,
-lighting transitions, and classifier flicker. The workflow applies
-presence hysteresis and class debounce rules before computing
-window-level metrics. Presence hysteresis prevents a brief missed
-detection from immediately producing an invalid state. Class debounce
-requires a candidate AOI label to persist before replacing the current
-stable label. This separation keeps frame semantics and temporal event
-structure analytically distinct: a classifier can be accurate at the
-frame level while still producing behaviorally implausible flicker.
+Frame-level outputs are not used directly as behavioral events. Presence
+hysteresis prevents brief missed detections from producing invalid
+states, and class debounce requires a candidate AOI label to persist
+before replacing the current stable label. This keeps frame semantics and
+temporal event structure analytically distinct.
 
 \subsection{Hand-on-Wheel State Estimation}
 
 The hand branch uses the steering-wheel camera view. GroundingDINO
-detects hands and steering wheels with open-vocabulary prompts. Contact
+detects hands and steering wheels with text prompts. Contact
 evidence is computed from overlap between detected hand boxes and
 steering-wheel boxes. The frame-level state machine maps reliable contact
 evidence to \textit{ON} or \textit{OFF}; unreliable frames retain the
@@ -261,35 +234,28 @@ previous state for a short grace period before entering
 \textit{UNCERTAIN}. A temporal majority rule then produces the stable
 state sequence used for review and metric extraction.
 
-GroundingDINO is useful for bootstrapping because the target objects can
-be specified by text prompts, but it is too slow to be the only detector
-for repeated large-scale video processing. The workflow therefore treats
-GroundingDINO as a teacher detector. Sampled teacher detections can be
-exported to detection CSV files and reused in two distillation forms:
-a two-class ROI-crop detector student with \textit{hand} and
-\textit{steering wheel} labels, or a state-level ROI-crop classifier
-student supervised by the teacher pipeline's stable
-\textit{ON}/\textit{OFF}/\textit{UNCERTAIN} outputs. The latter is used
-as the present acceleration checkpoint because the downstream analysis
-consumes stable hand-state variables rather than raw boxes.
-
-This branch is intentionally reviewed at the final-state level, after
-detector confidence, contact rules, and temporal stabilization have acted
-together. Reviewing only raw boxes would not show whether the derived
-state sequence is behaviorally plausible. Reviewing only aggregate
-hands-on percentages would hide whether failures come from the ROI,
-detector, contact threshold, or temporal rule.
+GroundingDINO is useful for text-prompted bootstrapping but too slow for
+repeated large-scale processing, so it is treated as a teacher detector.
+Sampled teacher detections can supervise either a two-class hand/wheel
+detector student or, as used here, a state-level ROI-crop classifier
+supervised by stable \textit{ON}/\textit{OFF}/\textit{UNCERTAIN} outputs.
+This branch is reviewed at the final-state level, after detector
+confidence, contact rules, and temporal stabilization act together.
 
 \subsection{Window-Level Metrics}
 
 The stabilized gaze and hand-state streams are aggregated into fixed
-analysis windows. Let \(g_i\) be the stabilized AOI label at time \(t_i\)
-and let \(\mathcal{L}=\{\textit{Forward},\textit{In-Car},
-\textit{Non-Forward}\}\) be the valid AOI set. Samples labeled
-\textit{Other} are excluded from valid-AOI denominators. AOI time
-percentages are computed with timestamp-based frame-duration weights
-rather than raw frame counts, so the method can tolerate variation in
-effective frame rate.
+analysis windows. The window is not a new labeling task; it is a
+deterministic, timestamp-weighted aggregation of the stabilized AOI and
+hand-state streams. This design reduces the influence of short-term
+prediction flicker, matches the downstream 20 s analysis unit, and keeps
+each derived value traceable to frame-level states, valid denominators,
+coverage gates, and episode-duration rules. Let \(g_i\) be the stabilized
+AOI label at time \(t_i\) and let \(\mathcal{L}=\{\textit{Forward},
+\textit{In-Car}, \textit{Non-Forward}\}\) be the valid AOI set. Samples
+labeled \textit{Other} are excluded from valid-AOI denominators. AOI time
+percentages use timestamp-based frame-duration weights rather than raw
+frame counts.
 
 Glance counts are computed as entries into AOI episodes. Consecutive
 frames with the same valid AOI label are treated as one episode. Long
@@ -297,18 +263,17 @@ off-path glances are defined as consecutive frames in either
 \textit{In-Car} or \textit{Non-Forward}, with event counts reported at
 1.6 s and 2.0 s thresholds. Hand-on-wheel ratios are computed overall and
 conditioned on AOI label after excluding \textit{UNCERTAIN} and unmatched
-wheel-state samples. Windows that fail the gaze-coverage threshold are
-retained for quality control but excluded from participant-level behavior
-summaries.
+wheel-state samples. Windows failing the gaze-coverage threshold are kept
+for QC but excluded from participant-level summaries.
 
-\section{Preliminary Evaluation}
+\section{Experiments}
 \label{sec:preliminary_validation}
 
 The evaluation focuses on whether the workflow produces reviewable
 measurement artifacts, not whether it solves driver monitoring in a
-single end-to-end score. Unless otherwise stated, the evidence below
-reflects artifacts finalized by May 24, 2026, with processing coverage
-finalized on May 25, 2026 for the 15-participant analysis set.
+single end-to-end score. Unless otherwise stated, evidence reflects
+artifacts finalized by May 24--25, 2026 for the 15-participant analysis
+set.
 
 \begin{figure}[t]
     \centering
@@ -326,29 +291,26 @@ finalized on May 25, 2026 for the 15-participant analysis set.
 \subsection{ROI and Processing Coverage}
 
 The ROI branch covers 15 participants with human-specified or
-human-confirmed dual-ROI assignment files and production gaze/wheel ROI
-manifests. The completed ROI audit covered provenance, resolution, and visual
-validity of the production ROI set. Its high-risk portion included
-uncertain p1 dual-ROI rows, p2 low-margin detector-assisted rows, and
-later layout-specific gaze/wheel checks. All 24 high-risk rows were
-reviewed to completion and resolved as confirmed, corrected, or
-no-action cases. The p1 manual/current ROI consistency check matched
-40/40 rows with zero coordinate changes.
+human-confirmed ROI assignment files and production gaze/wheel ROI
+manifests. The completed audit covered provenance, resolution, visual
+validity, uncertain dual-ROI rows, low-margin detector-assisted rows, and
+layout-specific gaze/wheel checks. All 24 high-risk rows were resolved,
+and a manual/current ROI consistency check matched 40/40 rows with zero
+coordinate changes.
 
 The rebuilt inference plans, gaze maps, wheel maps, and 20 s behavior
 windows cover all 15 analysis participants. Table~\ref{tab:coverage_refresh}
 summarizes the resulting processing coverage. All 301 planned gaze/wheel
 segments had frame-level CSV outputs, and all 7,327 generated windows
 resolved to gaze and wheel files. The final participant-level summaries
-used 7,306 windows that passed the 0.98 gaze-coverage threshold; 21
-windows were retained for quality control but excluded from those
-summaries.
+used 7,306 windows passing the 0.98 gaze-coverage threshold; 21 windows
+were retained for QC only.
 
 \begin{table}[t]
 \centering
 \caption{Processing coverage across the 15-participant analysis set.}
 \label{tab:coverage_refresh}
-\resizebox{\linewidth}{!}{%
+\autouitablefont
 \begin{tabular}{lr}
 \toprule
 Coverage item & Value \\
@@ -364,32 +326,28 @@ Coverage-qualified windows & 7,306 \\
 QC-excluded windows & 21 \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
-\subsection{AOI Generalization}
+\subsection{AOI Generalization and Adaptation}
 
-To evaluate cross-participant generalization, we ran a
-leave-one-participant-out (LOPO) AOI experiment over 14 held-out
-participants, five seeds, and four backbones, for 280 training runs. Each
-split trains on all other participants and freezes the held-out
-participant as the test set. The primary metric is three-class macro-F1
-over \textit{Forward}, \textit{In-Car}, and \textit{Non-Forward};
-\textit{Other} remains a secondary data-quality label because the
-current test sets have limited invalid-sample support.
+To evaluate cross-participant generalization, we ran a 14-participant
+leave-one-participant-out (LOPO) AOI experiment with five seeds and four
+backbones, for 280 training runs. The primary metric is three-class
+macro-F1 over \textit{Forward}, \textit{In-Car}, and
+\textit{Non-Forward}; \textit{Other} remains a secondary data-quality
+label because current test sets have limited invalid-sample support.
 
-All 280 LOPO training runs and all 280 prediction jobs completed.
-Table~\ref{tab:lopo_means} reports mean held-out performance across the
-70 runs per model. ResNet50 achieved the highest mean three-class
-macro-F1, balanced accuracy, and event-level accuracy. YOLOv8s-cls
-remains a useful deployment baseline, but these multi-seed point
-estimates do not show a unique accuracy advantage for YOLOv8s-cls.
+All training and prediction jobs completed. Table~\ref{tab:lopo_means}
+reports mean held-out performance across the 70 runs per model. ResNet50
+achieved the highest mean metrics; YOLOv8s-cls remains useful for
+deployment but was not uniquely accurate.
 
 \begin{table}[t]
 \centering
 \caption{Mean held-out performance in the five-seed 14-participant LOPO
 AOI experiment. Each model has 70 held-out runs.}
 \label{tab:lopo_means}
+\autouitablefont
 \begin{tabular}{lrrr}
 \toprule
 Model & Macro-F1 & Bal. acc. & Event acc. \\
@@ -402,26 +360,20 @@ DeiT-Tiny & 0.300 & 0.350 & 0.399 \\
 \end{tabular}
 \end{table}
 
-At the participant-split level, the best non-YOLO mean exceeded
-YOLOv8s-cls on 11/14 participants. A bootstrap non-inferiority test with
-a 3 percentage-point margin found at least one non-YOLO candidate
-satisfying the margin on 11/14 splits. No non-YOLO model established
-exact equivalence across the full \(\pm\)3 percentage-point band, so the
-appropriate interpretation is family-best non-inferiority rather than
-exact equality across all backbones or participants.
-
-\subsection{Few-Shot Participant Adaptation}
+At the split level, the best non-YOLO mean exceeded YOLOv8s-cls on 11/14
+participants. A 3 percentage-point bootstrap non-inferiority test found
+at least one non-YOLO candidate satisfying the margin on 11/14 splits,
+supporting family-best non-inferiority rather than exact equivalence.
 
 The few-shot experiment tests how much participant-specific labeling is
 needed when the goal is adaptation rather than zero-label
-generalization. We ran a no-leak adaptation curve for p1, p2, and p4 at
-25, 50, 100, and 200 label budgets, with five seeds per budget and
-frozen participant-specific test sets. Figure~\ref{fig:fewshot_curve}
-shows rapid ResNet50 gains from 25 to 100 labels, while YOLOv8s-cls
-catches up and exceeds ResNet50 at 200 labels. The bootstrap
-non-inferiority test found ResNet50 non-inferior to YOLOv8s-cls in 8/12
-participant-budget cells. Thus, label budget and participant adaptation
-are first-order design variables for this measurement workflow.
+generalization. We ran a no-leak adaptation curve over three
+participant-specific adaptation panels at 25, 50, 100, and 200 label
+budgets, five seeds per budget, and frozen participant-specific test
+sets. Figure~\ref{fig:fewshot_curve} shows rapid ResNet50 gains from 25
+to 100 labels and YOLOv8s-cls leading at 200 labels. ResNet50 was
+non-inferior to YOLOv8s-cls in 8/12 participant-budget cells, suggesting
+that label budget should be controlled and reported.
 
 \begin{figure}[t]
     \centering
@@ -430,50 +382,53 @@ are first-order design variables for this measurement workflow.
     YOLOv8s-cls macro-F1 over 25, 50, 100, and 200 participant-specific
     labels. ResNet50 rises quickly through 100 labels and YOLOv8s-cls is
     highest at 200 labels.}
-    \caption{Few-shot no-leak adaptation curve over p1, p2, and p4
-    (five seeds per participant-budget cell).}
+    \caption{Few-shot no-leak adaptation curve over three
+    participant-specific adaptation panels (five seeds per
+    participant-budget cell).}
     \label{fig:fewshot_curve}
 \end{figure}
 
 \subsection{Temporal Stability}
 
 We compared raw per-frame AOI predictions with stabilized
-\textit{Gaze\_Class} on a p2+p8 subset covering 60 segments, 643,603
-frames, and 436.95 min. Stabilization reduced label switches from 279.82
+\textit{Gaze\_Class} on a two-context subset covering 60 segments,
+643,603 frames, and 436.95 min. Stabilization reduced label switches from 279.82
 to 42.22 per minute, an 84.91\% reduction. Raw and stable labels
 differed on 106,418 frames, or 16.54\% of the subset. Stabilization also
 changed behavior-level event structure: 1.6 s off-path episodes rose
-from 923 to 1,289, and 2.0 s episodes rose from 696 to 1,032. These
-results show why temporal rules must be evaluated directly rather than
-treated as cosmetic smoothing.
+from 923 to 1,289, and 2.0 s episodes rose from 696 to 1,032, showing
+that temporal rules change event structure rather than cosmetic
+smoothness alone.
 
-\subsection{Hand-on-Wheel Review}
+\subsection{Hand-State Review and Distillation}
 
-The wheel branch produced 301 segment-level outputs across all 15
-analysis participants, totaling 3,914,412 state-classified rows. The
-uncertainty rate remains high for several participants, including p15
-with 75.2\% uncertain frames, p17 with 68.6\%, and p18 with 70.3\%.
-These values indicate that hand-state estimation is more sensitive to
-camera layout, occlusion, and steering-wheel evidence than AOI glance
-classification.
+The wheel branch produced 301 segment-level outputs and 3,914,412
+state-classified rows. Several driver/camera contexts had
+majority-\textit{UNCERTAIN} support, indicating that hand-state
+estimation is sensitive to camera layout, occlusion, and steering-wheel
+evidence. AOI/glance metrics can be used independently; hand-conditioned
+metrics should report the valid \textit{ON}/\textit{OFF} denominator, and
+majority-\textit{UNCERTAIN} contexts should be treated as low-support hand
+evidence.
 
 The first agreement summary contained 24 reviewed rows with matched
 pipeline and human labels. Agreement was 18/24 (75.0\%), with four
 false-ON and two false-OFF cases. During review, we found that one
 evidence batch initially reused single-panel gaze ROIs as wheel ROIs. We
 therefore regenerated layout-specific cockpit evidence for the affected
-participants. The corrected second pass covered seven participants and
-21 final states; the reviewer judgment matched all 21 pipeline final
-states, including 12 binary ON/OFF cases and nine \textit{UNCERTAIN}
-cases (Table~\ref{tab:wheel_second_pass}). This supports plausibility
-after ROI-evidence correction, while still leaving independent
-double-coding as open work.
+participants. The corrected second pass covered 21 final states; the
+reviewer matched all 21 pipeline states, including 12 binary ON/OFF cases
+and nine \textit{UNCERTAIN} cases (Table~\ref{tab:wheel_second_pass}).
+We interpret this second pass as a post-correction workflow sanity check
+showing that the regenerated evidence is internally consistent with
+reviewed final states, not as an independent human-gold-standard
+validation of hand-state measurement.
 
 \begin{table}[t]
 \centering
 \caption{Hand-on-wheel final-state validation outcomes.}
 \label{tab:wheel_second_pass}
-\resizebox{\linewidth}{!}{%
+\autouitablefont
 \begin{tabular}{lrrr}
 \toprule
 Scope & Reviewed & Agreement & False ON/OFF \\
@@ -482,69 +437,83 @@ Initial manifest & 24 & 18/24 & 4/2 \\
 Corrected second pass & 21 & 21/21 & 0/0 \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
-\subsection{Hand/Wheel Distillation Check}
+We ran a bounded state-distillation check for the slow hand/wheel branch.
+An initial two-probe runtime check, 60 s and 140 s, produced 5,000 ROI
+crops labeled by the teacher pipeline's stable
+\textit{ON}/\textit{OFF}/\textit{UNCERTAIN} state; a deterministic
+frame-hash split held out 1,035 validation crops. Because that split had
+few \textit{ON} samples, we added an ON-enriched multi-context
+time-block check using clean teacher frames with stable/raw agreement,
+at least 0.5 s separation from stable-state transitions, reliable contact
+evidence for \textit{ON}, and balanced held-out support of 300 validation
+crops per state. This WIP check reports teacher-state agreement and
+per-class support; it does not claim that the student can replace the
+teacher branch in production.
 
-We ran a bounded state-distillation check to test whether slow
-GroundingDINO hand/wheel inference can be amortized through a compact
-student model. Two p1 GroundingDINO runtime probes, 60 s and 140 s, were
-converted into 5,000 ROI crops labeled by the teacher pipeline's stable
-\textit{ON}/\textit{OFF}/\textit{UNCERTAIN} state. A deterministic
-frame-hash split held out 1,035 validation crops, including all three
-states. A YOLOv8n-cls student trained from the local YOLOv8n-cls
-checkpoint with low augmentation reached 0.988 top-1 teacher-state
-accuracy by Ultralytics validation.
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/distillation_schematic.png}
+    \Description{A hand-drawn style schematic showing a GroundingDINO
+    hand/wheel teacher producing stable ON, OFF, and UNCERTAIN labels for
+    ROI crops, a compact YOLOv8s-cls student trained on teacher-labeled crops,
+    and independent checks for agreement, runtime, and current scope limits.}
+    \caption{State-distillation check for the hand-on-wheel branch.
+    GroundingDINO is treated as a teacher on selected probes; the compact
+    student is evaluated as an acceleration checkpoint rather than as a
+    replacement for full multi-participant validation.}
+    \label{fig:distillation_schematic}
+\end{figure}
 
-Table~\ref{tab:wheel_distill} summarizes the independent agreement and
-runtime evidence. Re-running the saved student on the held-out validation
-manifest produced 1,022/1,035 matching states, or 0.987 agreement with
-the GroundingDINO teacher states. The confusion counts were
-531 \textit{OFF}$\rightarrow$\textit{OFF},
-12 \textit{ON}$\rightarrow$\textit{ON},
-479 \textit{UNCERTAIN}$\rightarrow$\textit{UNCERTAIN},
-and 13 total mismatches. After model loading and warm-up, the student
-processed all 5,000 ROI crops in 6.342 s, or 1.268 ms per crop. The same
-two GroundingDINO probes previously required 172.752 s, giving a
-27.2$\times$ loaded-model speedup on the teacher-labeled probe set. This
-check demonstrates distillation effectiveness without requiring the
-remaining video segments to be re-inferred.
+Table~\ref{tab:wheel_distill} summarizes the checks. The initial saved
+student matched 1,022/1,035 teacher states (0.987 agreement) and
+processed 5,000 crops in 6.342 s after warm-up, versus 172.752 s for the
+two GroundingDINO probes (27.2$\times$ speedup), but its \textit{ON}
+support was only 12 crops. The ON-enriched clean time-block check raised
+\textit{ON} support to 300 held-out crops and reached 0.969 precision,
+0.930 recall, and 0.949 F1 for that class. The overall clean held-out
+agreement was 0.923, with \textit{OFF} requiring additional
+boundary-context review. We therefore treat the student as an
+acceleration checkpoint and support audit, not as a production replacement
+for the teacher branch.
 
 \begin{table}[t]
 \centering
-\caption{GroundingDINO-to-YOLO hand-state distillation check.}
+\caption{Teacher-student hand-state distillation checks.}
 \label{tab:wheel_distill}
-\resizebox{\linewidth}{!}{%
-\begin{tabular}{ll}
+\autouitablefont
+\begin{tabular}{llrrrr}
 \toprule
-Check & Result \\
+Check & State & N & P & R & F1 \\
 \midrule
-Teacher-labeled subset & 2 p1 probes; 5,000 ROI crops; 3 stable states \\
-Split and student & 3,965 train / 1,035 validation; YOLOv8n-cls, 1.44M params \\
-Teacher-state agreement & 0.987 validation agreement; 1,022/1,035 states match \\
-Runtime probe & 6.342 s for 5,000 crops; 27.2$\times$ vs. GroundingDINO teacher wall time \\
+Init. & All & 1,035 & \multicolumn{3}{c}{0.987 agree.; 27.2$\times$ speedup} \\
+Init. & OFF & 540 & 0.993 & 0.983 & 0.988 \\
+Init. & ON & 12 & 0.857 & 1.000 & 0.923 \\
+Init. & UNC. & 483 & 0.986 & 0.992 & 0.989 \\
+Clean & All & 900 & \multicolumn{3}{c}{0.923 agree.; support audit} \\
+Clean & OFF & 300 & 0.894 & 0.897 & 0.895 \\
+Clean & ON & 300 & 0.969 & 0.930 & 0.949 \\
+Clean & UNC. & 300 & 0.910 & 0.943 & 0.926 \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
 \subsection{Deployment Checks}
 
-Deployment checks support the engineering feasibility of the workflow.
-In the five-seed LOPO matrix, all 280 trained models exported to ONNX and
-no top-1 parity result fell below 0.99. Table~\ref{tab:deployment}
-reports a compact CPU benchmark from the holdout protocol, where all 120
-exports completed. YOLOv8n/s are smaller and faster than the non-YOLO
-backbones; ResNet50 is the fastest non-YOLO option but is much larger on
-disk. These results support YOLOv8-cls as a convenient deployment path
-even though it is not uniquely accurate in the held-out AOI experiments.
+Deployment checks support engineering feasibility. In the five-seed LOPO
+matrix, all 280 trained models exported to ONNX and no top-1 parity
+result fell below 0.99. Table~\ref{tab:deployment} reports a compact CPU
+benchmark from the holdout protocol, where all 120 exports completed.
+YOLOv8n and YOLOv8s are smaller and faster than non-YOLO backbones,
+supporting YOLOv8-cls as a convenient but not uniquely accurate
+deployment path.
 
 \begin{table}[t]
 \centering
 \caption{Compact ONNX CPU deployment benchmark from the holdout protocol.}
 \label{tab:deployment}
-\resizebox{\linewidth}{!}{%
+\autouitablefont
 \begin{tabular}{lrrrr}
 \toprule
 Model & MB & B1 p50 ms & B1 img/s & B32 img/s \\
@@ -558,78 +527,58 @@ ConvNeXt-Tiny & 106.2 & 18.65 & 51.8 & 114.1 \\
 EfficientNet-B3 & 40.8 & 33.69 & 29.4 & 157.5 \\
 \bottomrule
 \end{tabular}
-}
 \end{table}
 
 \section{Discussion}
 
-The workflow addresses a recurring measurement problem in
-naturalistic-driving research: studies often need driver-state variables
-from long in-cabin videos, but the available data do not contain
-eye-tracking streams or hand-state labels. The central design choice is
-to keep the annotation process auditable. ROI selection, AOI semantics,
+The central design choice is auditability: ROI selection, AOI semantics,
 participant calibration, temporal stability, hand-state review, and
-window aggregation are separate stages, so errors can be localized and
-corrected rather than hidden inside an aggregate model score.
+window aggregation remain separate so errors can be localized rather than
+hidden inside an aggregate model score. The evidence also clarifies that
+deployment convenience is not unique accuracy. YOLOv8-cls is compact and
+exportable, but ResNet50 and EfficientNet-B0 remain competitive for AOI
+generalization/adaptation; for hand state, a compact student is useful
+only as a support audit until broader human-labeled, multi-context
+validation is complete.
 
-The preliminary evidence also clarifies the role of the computer-vision
-backbones. YOLOv8-cls is attractive because it is compact, easy to train,
-and straightforward to export. The AOI experiments, however, suggest
-that deployment convenience should not be confused with unique accuracy.
-ResNet50 and EfficientNet-B0 remain competitive under participant
-generalization and few-shot adaptation. For hand-on-wheel estimation,
-GroundingDINO is useful for open-vocabulary bootstrapping and review, but
-its computational cost and uncertainty rates suggest that a smaller
-task-specific student may be preferable for large-scale deployment. The
-state-distillation check shows one practical route: spend the
-GroundingDINO cost once on selected teacher frames, then use a compact
-student classifier to reproduce stable hand-state outputs for faster
-future inference.
-
-For downstream studies, the practical value of this method is that it
-turns video into documented behavioral variables without requiring each
-study to re-derive the full annotation pipeline. A later analysis can cite
-this workflow as the source of AOI glance and hand-on-wheel feature
-construction, while focusing its own claims on the behavioral or
-psychological question under study. That citation relationship requires
-the present paper to remain method-focused: it defines the measurement
-process, evidence checks, and limitations, but it does not claim the
-substantive results of any downstream trust or automation-use analysis.
+For downstream studies, the value is citation-level provenance. A later
+analysis can cite this workflow as the source of AOI glance and
+hand-on-wheel feature construction while keeping its own claims focused
+on behavioral questions, not feature-construction mechanics.
 
 \section{Limitations and Open Work}
 \label{sec:remaining_work}
 
-Several limitations remain. First, the workflow depends on participant
-labels and is not a zero-label generalization system. Second,
-\textit{Other} is important for robustness but remains difficult to
-evaluate when frozen test sets contain few invalid samples. Third, ROI
-transcription or layout-selection errors can dominate downstream
-results; the current production manifests have completed visual ROI
-review, but new layouts, videos, or manifest edits would require repeated
-review. Fourth, the corrected hand-on-wheel second pass is
+Several limitations remain. The workflow depends on participant labels
+and is not a zero-label generalization system. High \textit{Other} rates
+can reduce valid-AOI denominators and should be reported downstream. ROI
+or layout errors can dominate results, so new layouts, videos, or
+manifest edits require repeated review. The hand-on-wheel second pass is
 single-reviewer evidence and should be expanded into an independently
-double-coded validation set. Fifth, the current distillation check is
-p1-derived and uses a frame-hash validation split, so the student should
-be retrained and stress-tested on broader multi-participant teacher
-samples before replacing GroundingDINO in production. Finally, deployment
-benchmarks should be repeated on the target runtime hardware before
-strong latency claims are made.
+double-coded validation set. Window aggregation reduces short-term
+flicker and makes behavior summaries auditable, but it does not remove
+classifier-derived uncertainty in thresholded episode counts such as long
+off-path glances. Current distillation evidence is teacher-state
+agreement, not full human-labeled multi-participant validation; the
+student must be stress-tested before replacing GroundingDINO. Deployment
+benchmarks should be repeated on target hardware before strong latency
+claims.
 
 \section{Conclusion}
 
 This WIP presents a human-in-the-loop workflow for extracting AOI-level
-glance and hand-on-wheel variables from naturalistic in-cabin video. The
-workflow combines human ROI review, AOI annotation, participant-specific
-calibration, segment-level inference, temporal stabilization,
-hand-on-wheel review, state distillation, and window-level metric
-extraction. Preliminary evidence from 15 participants shows that the
-pipeline can process millions of frames while preserving checkpoints for
-ROI validity, AOI generalization, adaptation cost, temporal stability,
-hand-state plausibility, student acceleration, and deployment
-feasibility. The resulting contribution is a
-transparent measurement method for downstream naturalistic-driving
-studies, not a replacement for eye tracking or a standalone theory of
-driver behavior.
+glance and hand-on-wheel variables from naturalistic in-cabin video.
+Across 15 participants, the workflow processed millions of frames while
+retaining reviewable checkpoints for ROI validity, AOI generalization,
+participant adaptation, temporal stability, hand-state plausibility,
+student acceleration, and deployment feasibility. This result is possible
+because the pipeline keeps geometry selection, human AOI semantics,
+frame-level inference, temporal smoothing, hand-state review, and
+window-level aggregation as separate auditable stages rather than merging
+them into a single model score. The evidence therefore supports AutoUI as
+a transparent feature-construction method for downstream naturalistic
+driving studies, not as an eye-tracking replacement, a production
+hand-state detector, or a standalone theory of driver behavior.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{method_citation_entries}
