@@ -4,6 +4,13 @@ __pycache__/
 .ipynb_checkpoints/
 .vscode/
 *.log
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.out
+*.pt
 .pytest_cache/
 .coverage
 htmlcov/
@@ -37,6 +44,7 @@ data/
 runs/
 gaze_onnx/experiments/runs_cls/
 gaze_onnx/experiments/web_label_*.log
+gaze_onnx/experiments/base_model_temp_val_review/
 
 # Large annotation and dataset payloads (keep scripts/manifests in git)
 gaze_onnx/experiments/anno_*/
