@@ -27,14 +27,15 @@ def test_fewshot_budget_positions_are_categorical() -> None:
 def test_main_generates_all_paper_figures(tmp_path: Path, monkeypatch) -> None:
     module = _load_draw_module()
     monkeypatch.setattr(module, "ROOT", tmp_path)
-    monkeypatch.setattr(module, "FIGURES", tmp_path / "figures")
+    monkeypatch.setattr(module, "FIGURES", tmp_path / "paper" / "figures")
 
     module.main()
 
-    assert (tmp_path / "lable_workflow.png").is_file()
-    assert (tmp_path / "figures" / "evidence_checkpoints.png").is_file()
-    assert (tmp_path / "figures" / "fewshot_curve.png").is_file()
-    assert (tmp_path / "figures" / "distillation_schematic.png").is_file()
+    figure_dir = tmp_path / "paper" / "figures"
+    assert (figure_dir / "label_workflow.png").is_file()
+    assert (figure_dir / "evidence_checkpoints.png").is_file()
+    assert (figure_dir / "fewshot_curve.png").is_file()
+    assert (figure_dir / "distillation_schematic.png").is_file()
 
 
 def test_generated_figure_text_uses_current_paper_wording() -> None:

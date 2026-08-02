@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draw compact supplemental figures for autoui.tex.
+"""Draw compact supplemental figures for paper/autoui.tex.
 
 The figures intentionally use deterministic jittered strokes so the PDF gets a
 hand-drawn visual aid without depending on SVG text rendering.
@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIGURES = ROOT / "figures"
+FIGURES = ROOT / "paper" / "figures"
 
 FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -289,7 +289,7 @@ def draw_column_header(
     fit_center_text(draw, (x0 + 18, y0 + 10, x1 - 18, y1 - 10), title, FONT_BOLD, 28, 20, PAPER)
 
 
-def draw_lable_workflow() -> None:
+def draw_label_workflow() -> None:
     rng = random.Random(20260526)
     w, h = 1650, 1040
     im = Image.new("RGBA", (w, h), PAPER)
@@ -367,7 +367,7 @@ def draw_lable_workflow() -> None:
         arrow(draw, (a[2] + 6, (a[1] + a[3]) / 2), (b[0] - 8, (b[1] + b[3]) / 2), INK, 4, rng)
 
     im = im.convert("RGB")
-    im.save(ROOT / "lable_workflow.png", dpi=(220, 220), quality=95)
+    im.save(FIGURES / "label_workflow.png", dpi=(220, 220), quality=95)
 
 
 def draw_panel(
@@ -595,8 +595,8 @@ def draw_distillation_schematic() -> None:
 
 
 def main() -> None:
-    FIGURES.mkdir(exist_ok=True)
-    draw_lable_workflow()
+    FIGURES.mkdir(parents=True, exist_ok=True)
+    draw_label_workflow()
     draw_evidence_checkpoints()
     draw_fewshot_curve()
     draw_distillation_schematic()

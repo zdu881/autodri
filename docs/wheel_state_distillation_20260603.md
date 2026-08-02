@@ -1,7 +1,7 @@
 # Wheel State Distillation Check (2026-06-03)
 
 This report records the GroundingDINO-to-student state distillation check used
-for `autoui.tex`.
+for `paper/autoui.tex`.
 
 ## Source Teacher Outputs
 

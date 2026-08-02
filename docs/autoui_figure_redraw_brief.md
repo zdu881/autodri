@@ -1,10 +1,10 @@
 # AutoUI Figure Redraw Brief
 
-This document summarizes the figures currently referenced by `autoui.tex` so a designer can redraw them with a consistent publication style. The figures support a method paper, not the downstream trust/NOA analysis in `sample.tex`.
+This document summarizes the figures currently referenced by `paper/autoui.tex` so a designer can redraw them with a consistent publication style. The figures support a method paper, not the downstream trust/NOA analysis in `sample.tex`.
 
 ## Global Requirements
 
-- Target paper: `autoui.tex`, ACM `acmart` two-column WIP format.
+- Target paper: `paper/autoui.tex`, ACM `acmart` two-column WIP format.
 - Preserve figure numbers and conceptual roles:
   - Figure 1: workflow overview.
   - Figure 2: evaluation/evidence checkpoints.
@@ -21,9 +21,9 @@ This document summarizes the figures currently referenced by `autoui.tex` so a d
 
 ## Figure 1: Human-in-the-loop Workflow
 
-Current file: `lable_workflow.png`
+Current file: `paper/figures/label_workflow.png`
 
-Referenced in `autoui.tex`:
+Referenced in `paper/autoui.tex`:
 - Section: `Workflow Design`.
 - Figure label: `fig:workflow`.
 - Text linkage: lines around the figure state that the workflow starts from target videos and analysis segments, then resolves videos, reviews driver ROIs, builds annotation packs, collects AOI labels, trains participant-specific classifiers, exports deployment models, runs inference, stabilizes predictions, estimates hand-on-wheel states, optionally distills teacher outputs, and aggregates behavior windows.
@@ -77,9 +77,9 @@ Redraw notes:
 
 ## Figure 2: Evidence Checkpoints
 
-Current file: `figures/evidence_checkpoints.png`
+Current file: `paper/figures/evidence_checkpoints.png`
 
-Referenced in `autoui.tex`:
+Referenced in `paper/autoui.tex`:
 - Section: `Preliminary Evaluation`.
 - Figure label: `fig:evidence_checkpoints`.
 - Text linkage: the paragraph before the figure states that the evaluation asks whether the workflow produces reviewable measurement artifacts, not whether a single end-to-end score solves driver monitoring. It also states the evidence is finalized by May 24, 2026, with processing coverage finalized on May 25, 2026 for the 15-participant analysis set.
@@ -142,9 +142,9 @@ Redraw notes:
 
 ## Figure 3: Few-shot Adaptation Curve
 
-Current file: `figures/fewshot_curve.png`
+Current file: `paper/figures/fewshot_curve.png`
 
-Referenced in `autoui.tex`:
+Referenced in `paper/autoui.tex`:
 - Section: `Few-Shot Participant Adaptation`.
 - Figure label: `fig:fewshot_curve`.
 - Text linkage: the paragraph states that the experiment used three participant-specific adaptation panels; budgets 25, 50, 100, and 200 labels; five seeds per budget; frozen participant-specific test sets; ResNet50 gains rapidly from 25 to 100 labels; YOLOv8s-cls catches up and exceeds ResNet50 at 200 labels; ResNet50 is non-inferior to YOLOv8s-cls in 8/12 participant-budget cells.
@@ -206,9 +206,9 @@ Redraw notes:
 
 ## Figure 4: Hand-state Distillation Schematic
 
-Current file: `figures/distillation_schematic.png`
+Current file: `paper/figures/distillation_schematic.png`
 
-Referenced in `autoui.tex`:
+Referenced in `paper/autoui.tex`:
 - Section: `Hand/Wheel Distillation Check`.
 - Figure label: `fig:distillation_schematic`.
 - Text linkage: the preceding paragraph states that two initial GroundingDINO runtime probes, 60 s and 140 s, were converted into 5,000 ROI crops labeled by the teacher pipeline's stable ON/OFF/UNCERTAIN state. A deterministic frame-hash split held out 1,035 validation crops. The revised text also adds an ON-enriched multi-context clean time-block check with 300 validation crops per state, stable/raw agreement, 0.5 s separation from stable-state transitions, and reliable contact evidence for ON crops.
@@ -304,7 +304,7 @@ Redraw notes:
 
 Before finalizing redesigned figures, verify:
 
-- `autoui.tex` still includes all four figure files with the expected labels.
+- `paper/autoui.tex` still includes all four figure files with the expected labels.
 - Figure 1 includes all workflow stages from input videos to participant summaries.
 - Figure 2 keeps all six checkpoint values exactly:
   - `15 participants`.
