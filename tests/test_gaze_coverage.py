@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 
 from autodri.workflows.build_participants_results_summary import summarize_metrics
+from autodri.workflows import build_all_participants_window_metrics as all_metrics
+from autodri.workflows import build_participants_results_summary as participant_summary
 from autodri.workflows.compute_p1_window_metrics import (
     compute_one_window,
     expected_gaze_rows_for_window,
@@ -83,3 +85,25 @@ def test_summarize_metrics_keeps_old_metrics_csv_compatible(tmp_path: Path) -> N
     assert out["coverage_ok_windows"] == ""
     assert out["coverage_fail_windows"] == ""
     assert out["mean_pct_time_off_path"] == "20.0000"
+
+
+def test_default_study_participants_match_analysis_sample() -> None:
+    expected = (
+        "p1",
+        "p2",
+        "p4",
+        "p6",
+        "p7",
+        "p8",
+        "p9",
+        "p10",
+        "p11",
+        "p13",
+        "p14",
+        "p15",
+        "p16",
+        "p17",
+        "p18",
+    )
+    assert all_metrics.PARTICIPANTS == list(expected)
+    assert participant_summary.PARTICIPANTS == list(expected)

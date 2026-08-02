@@ -18,7 +18,10 @@ CASES = [
 
 CLI_ONLY_CASES = [
     "autodri.cli.aoi_equivalence",
+    "autodri.cli.autoui_experiments",
+    "autodri.cli.pipeline_validation_summary",
     "autodri.cli.train_aoi_backbone",
+    "autodri.cli.train_gaze_cls",
 ]
 
 
@@ -51,3 +54,16 @@ def test_cli_only_help(module_name: str) -> None:
         env=os.environ.copy(),
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_autoui_help_hides_private_worker_commands() -> None:
+    proc = subprocess.run(
+        [sys.executable, "-m", "autodri.cli.autoui_experiments", "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "_deployment-one" not in proc.stdout

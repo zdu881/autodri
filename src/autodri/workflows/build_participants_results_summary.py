@@ -30,6 +30,25 @@ from autodri.common.paths import (
 )
 
 
+PARTICIPANTS = [
+    "p1",
+    "p2",
+    "p4",
+    "p6",
+    "p7",
+    "p8",
+    "p9",
+    "p10",
+    "p11",
+    "p13",
+    "p14",
+    "p15",
+    "p16",
+    "p17",
+    "p18",
+]
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build participants results summary")
     p.add_argument(
@@ -185,10 +204,9 @@ def infer_model(participant: str, gaze_files: List[Path]) -> str:
 
 def main() -> None:
     args = parse_args()
-    participants = ["p1", "p2", "p4", "p6", "p7", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15", "p16", "p17", "p18"]
     out_rows: List[Dict[str, str]] = []
 
-    for p in participants:
+    for p in PARTICIPANTS:
         ps = get_paths(p)
         target_rows = read_csv(ps["target"])
         target_matched = ""
