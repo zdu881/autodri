@@ -6,11 +6,11 @@ for `autoui.tex`.
 ## Source Teacher Outputs
 
 - Teacher state CSVs:
-  - `/data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_state_gd_60s.csv`
-  - `/data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_state_gd_140s.csv`
+  - `${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_state_gd_60s.csv`
+  - `${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_state_gd_140s.csv`
 - Teacher detection metadata CSVs:
-  - `/data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_det_gd_60s.csv`
-  - `/data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_det_gd_140s.csv`
+  - `${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_det_gd_60s.csv`
+  - `${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_det_gd_140s.csv`
 - Teacher probe wall time from the previous runtime check:
   - 60 s probe: 53.698 s
   - 140 s probe: 119.054 s
@@ -21,13 +21,14 @@ for `autoui.tex`.
 Command:
 
 ```bash
+export AUTODRI_WORKSPACE=/path/to/autodri_workspace
 python scripts/wheel_state_distill_experiment.py build \
-  --state-csv /data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_state_gd_60s.csv \
-  --det-csv /data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_det_gd_60s.csv \
-  --state-csv /data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_state_gd_140s.csv \
-  --det-csv /data/home/sim6g/autodri_workspace/data/natural_driving_p1/analysis/tmp_wheel_det_gd_140s.csv \
-  --out-dir /data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/dataset_224_hash \
-  --workspace-root /data/home/sim6g/autodri_workspace \
+  --state-csv "${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_state_gd_60s.csv" \
+  --det-csv "${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_det_gd_60s.csv" \
+  --state-csv "${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_state_gd_140s.csv" \
+  --det-csv "${AUTODRI_WORKSPACE}/data/natural_driving_p1/analysis/tmp_wheel_det_gd_140s.csv" \
+  --out-dir "${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/dataset_224_hash" \
+  --workspace-root "${AUTODRI_WORKSPACE}" \
   --imgsz 224 \
   --sample-stride 1 \
   --val-ratio 0.2 \
@@ -48,10 +49,10 @@ Command:
 
 ```bash
 yolo classify train \
-  model=/data/home/sim6g/autodri/yolov8n-cls.pt \
-  data=/data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/dataset_224_hash \
+  model=yolov8n-cls.pt \
+  data="${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/dataset_224_hash" \
   epochs=30 imgsz=224 batch=64 device=6 workers=8 \
-  project=/data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/yolo_runs \
+  project="${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/yolo_runs" \
   name=yolov8n_cls_state_hash_e30_codex_verify exist_ok=True seed=3407 deterministic=True \
   patience=10 auto_augment=none erasing=0.0 fliplr=0.0 flipud=0.0 \
   hsv_h=0.0 hsv_s=0.0 hsv_v=0.0 translate=0.0 scale=0.0
@@ -61,7 +62,7 @@ Output:
 
 - Student: YOLOv8n-cls, 1.44M parameters.
 - Best checkpoint: epoch 15, `top1_acc=0.988` by Ultralytics validation.
-- Saved checkpoint: `/data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/yolo_runs/yolov8n_cls_state_hash_e30_codex_verify/weights/best.pt`
+- Saved checkpoint: `${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/yolo_runs/yolov8n_cls_state_hash_e30_codex_verify/weights/best.pt`
 - Checkpoint size: 2.9 MB.
 
 ## Independent Prediction Check
@@ -70,9 +71,9 @@ Command:
 
 ```bash
 python scripts/wheel_state_distill_experiment.py predict \
-  --model /data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/yolo_runs/yolov8n_cls_state_hash_e30_codex_verify/weights/best.pt \
-  --manifest /data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/dataset_224_hash/manifest.csv \
-  --out-csv /data/home/sim6g/autodri_workspace/artifacts/wheel_state_distill_20260603/yolov8n_cls_state_hash_codex_verify_val_predictions.csv \
+  --model "${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/yolo_runs/yolov8n_cls_state_hash_e30_codex_verify/weights/best.pt" \
+  --manifest "${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/dataset_224_hash/manifest.csv" \
+  --out-csv "${AUTODRI_WORKSPACE}/artifacts/wheel_state_distill_20260603/yolov8n_cls_state_hash_codex_verify_val_predictions.csv" \
   --split val \
   --imgsz 224 \
   --batch 128 \
