@@ -43,8 +43,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default="artifacts/aoi_backbone_runs")
     parser.add_argument("--name", default="aoi_backbone")
     parser.add_argument("--internal-val-ratio", type=float, default=0.2)
+    parser.add_argument(
+        "--use-physical-splits",
+        action="store_true",
+        help="Use manifest train/val/test directly, treating val as internal validation and test as frozen holdout.",
+    )
     parser.add_argument("--no-pretrained", action="store_true")
     parser.add_argument("--no-class-weights", action="store_true")
+    parser.add_argument(
+        "--labels",
+        default=",".join(DEFAULT_LABELS),
+        help="Comma-separated labels/classes to train, in output-index order.",
+    )
     parser.add_argument("--export-onnx", action="store_true")
     return parser
 
@@ -61,17 +71,23 @@ def train(args: argparse.Namespace) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     samples = load_split_manifest(data_dir / "split_manifest.csv")
-    assignment = assign_internal_validation(samples, val_ratio=args.internal_val_ratio, seed=args.seed)
+    assignment = assign_training_splits(
+        samples,
+        val_ratio=args.internal_val_ratio,
+        seed=args.seed,
+        use_physical_splits=args.use_physical_splits,
+    )
     integrity = validate_split_integrity(samples, assignment)
-    if integrity["group_leak_count"] or integrity["augmented_not_train_count"] or integrity["frozen_val_not_test_count"]:
+    if has_split_integrity_errors(integrity, use_physical_splits=args.use_physical_splits):
         raise ValueError(f"Split integrity failed: {integrity}")
 
-    train_rows = [sample for sample in samples if assignment[sample.dst_rel] == "train" and sample.label in DEFAULT_LABELS]
-    val_rows = [sample for sample in samples if assignment[sample.dst_rel] == "internal_val" and sample.label in DEFAULT_LABELS]
+    labels = resolve_training_labels(str(args.labels).split(","))
+    train_rows = [sample for sample in samples if assignment[sample.dst_rel] == "train" and sample.label in labels]
+    val_rows = [sample for sample in samples if assignment[sample.dst_rel] == "internal_val" and sample.label in labels]
     if not train_rows or not val_rows:
         raise ValueError("Internal train/validation split is empty; inspect split_manifest.csv")
 
-    class_to_idx = {label: idx for idx, label in enumerate(DEFAULT_LABELS)}
+    class_to_idx = {label: idx for idx, label in enumerate(labels)}
     train_ds = AoiManifestDataset(data_dir, train_rows, class_to_idx, imgsz=args.imgsz, train=True)
     val_ds = AoiManifestDataset(data_dir, val_rows, class_to_idx, imgsz=args.imgsz, train=False)
     train_loader = DataLoader(
@@ -84,7 +100,7 @@ def train(args: argparse.Namespace) -> Path:
     )
     val_loader = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=args.workers, collate_fn=_collate_batch)
 
-    model = build_model(args.model, num_classes=len(DEFAULT_LABELS), pretrained=not args.no_pretrained).to(device)
+    model = build_model(args.model, num_classes=len(labels), pretrained=not args.no_pretrained).to(device)
     weight = None if args.no_class_weights else _class_weights(train_rows, class_to_idx, device)
     criterion = nn.CrossEntropyLoss(weight=weight)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -106,7 +122,7 @@ def train(args: argparse.Namespace) -> Path:
                 {
                     "model_name": args.model,
                     "state_dict": model.state_dict(),
-                    "labels": list(DEFAULT_LABELS),
+                    "labels": list(labels),
                     "imgsz": args.imgsz,
                     "class_to_idx": class_to_idx,
                     "args": vars(args),
@@ -121,7 +137,7 @@ def train(args: argparse.Namespace) -> Path:
         fieldnames=["dst_rel", "original_split", "assigned_split"],
     )
     write_csv_rows(out_dir / "integrity_report.csv", [integrity])
-    (out_dir / "labels.json").write_text(json.dumps(list(DEFAULT_LABELS), indent=2), encoding="utf-8")
+    (out_dir / "labels.json").write_text(json.dumps(list(labels), indent=2), encoding="utf-8")
     (out_dir / "train_config.json").write_text(json.dumps(vars(args), indent=2, sort_keys=True), encoding="utf-8")
 
     if args.export_onnx:
@@ -194,6 +210,53 @@ def should_drop_last_batch(dataset_size: int, batch_size: int) -> bool:
     if dataset_size <= batch_size or batch_size < 2:
         return False
     return dataset_size % batch_size == 1
+
+
+def assign_training_splits(
+    samples: Sequence[object],
+    *,
+    val_ratio: float = 0.2,
+    seed: int = 42,
+    use_physical_splits: bool = False,
+) -> dict[str, str]:
+    if not use_physical_splits:
+        return assign_internal_validation(samples, val_ratio=val_ratio, seed=seed)
+
+    assignment: dict[str, str] = {}
+    for sample in samples:
+        split = str(sample.split)
+        if split == "train":
+            assigned = "train"
+        elif split in {"val", "internal_val"}:
+            assigned = "internal_val"
+        elif split == "test":
+            assigned = "test"
+        else:
+            assigned = "train"
+        assignment[sample.dst_rel] = assigned
+    return assignment
+
+
+def resolve_training_labels(raw_labels: Sequence[str]) -> tuple[str, ...]:
+    labels = tuple(label.strip() for label in raw_labels if label.strip())
+    if not labels:
+        raise ValueError("At least one training label is required")
+    unknown = [label for label in labels if label not in DEFAULT_LABELS]
+    if unknown:
+        raise ValueError(f"Unknown training labels: {unknown}")
+    if len(set(labels)) != len(labels):
+        raise ValueError(f"Duplicate training labels are not allowed: {labels}")
+    return labels
+
+
+def has_split_integrity_errors(integrity: dict[str, int], *, use_physical_splits: bool = False) -> bool:
+    frozen_val_error = 0 if use_physical_splits else int(integrity.get("frozen_val_not_test_count", 0))
+    return bool(
+        int(integrity.get("group_leak_count", 0))
+        or int(integrity.get("augmented_not_train_count", 0))
+        or frozen_val_error
+        or int(integrity.get("missing_assignment_count", 0))
+    )
 
 
 class AoiManifestDataset:
@@ -324,4 +387,14 @@ def _set_seed(seed: int) -> None:
         pass
 
 
-__all__ = ["build_parser", "build_model", "export_onnx", "main", "should_drop_last_batch", "train"]
+__all__ = [
+    "assign_training_splits",
+    "build_parser",
+    "build_model",
+    "export_onnx",
+    "has_split_integrity_errors",
+    "main",
+    "resolve_training_labels",
+    "should_drop_last_batch",
+    "train",
+]

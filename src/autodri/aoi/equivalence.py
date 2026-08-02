@@ -178,17 +178,27 @@ def assign_internal_validation(
             continue
         labels = sorted({row.label for row in rows})
         eligible.append(key)
-        by_label[labels[0] if labels else ""].append(key)
+        for label in labels:
+            by_label[label].append(key)
 
     selected: set[tuple[str, str, int]] = set()
-    for keys in by_label.values():
-        keys = list(keys)
-        if len(keys) < 2:
+    target_count = max(1, int(round(len(eligible) * val_ratio))) if eligible else 0
+    target_count = min(target_count, max(0, len(eligible) - 1))
+
+    for label in sorted(by_label):
+        keys = [key for key in by_label[label] if key not in selected]
+        if not keys:
             continue
         rng.shuffle(keys)
-        n_val = max(1, int(round(len(keys) * val_ratio)))
-        n_val = min(n_val, len(keys) - 1)
-        selected.update(keys[:n_val])
+        selected.add(keys[0])
+
+    if len(selected) >= len(eligible) and len(eligible) > 1:
+        selected.remove(rng.choice(sorted(selected)))
+
+    remaining = [key for key in eligible if key not in selected]
+    rng.shuffle(remaining)
+    while len(selected) < target_count and remaining:
+        selected.add(remaining.pop())
 
     if not selected and eligible:
         selected.add(rng.choice(eligible))

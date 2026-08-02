@@ -45,6 +45,7 @@ def parse_args():
         help="Augmentation preset. robust is recommended for cross-domain generalization.",
     )
     p.add_argument("--dropout", type=float, default=0.2, help="Classifier dropout (0~1)")
+    p.add_argument("--dynamic", action="store_true", help="Export ONNX with a dynamic batch dimension")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
@@ -165,7 +166,7 @@ def export_onnx(args):
     onnx_path = model.export(
         format="onnx",
         imgsz=args.imgsz,
-        dynamic=False,
+        dynamic=bool(args.dynamic),
         simplify=True,
     )
     print(f"\nExported ONNX: {onnx_path}")

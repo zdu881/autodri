@@ -121,6 +121,68 @@ def test_internal_validation_split_keeps_frozen_val_as_test_and_augmented_rows_i
     assert report["augmented_not_train_count"] == 0
 
 
+def test_internal_validation_split_covers_each_eligible_label_when_grouped_data_is_imbalanced(tmp_path: Path) -> None:
+    rows: list[dict[str, str]] = []
+    frame_id = 0
+    for label, count in [("Forward", 5), ("In-Car", 3), ("Non-Forward", 1)]:
+        for idx in range(count):
+            frame_id += 1
+            rows.append(
+                {
+                    "split": "train",
+                    "label": label,
+                    "domain": "d1",
+                    "frame_id": str(frame_id),
+                    "timestamp": str(float(frame_id * 31)),
+                    "video": f"{label}_{idx}.mp4",
+                    "src_rel": f"images/{label}_{idx}.jpg",
+                    "dst_rel": f"train/{label}/{label}_{idx}.jpg",
+                    "augmented": "0",
+                }
+            )
+    rows.append(
+        {
+            "split": "train",
+            "label": "Non-Forward",
+            "domain": "d1",
+            "frame_id": "100",
+            "timestamp": "3100.0",
+            "video": "non_forward_aug.mp4",
+            "src_rel": "images/non_forward_aug.jpg",
+            "dst_rel": "train/Non-Forward/non_forward_aug.jpg",
+            "augmented": "1",
+        }
+    )
+    rows.append(
+        {
+            "split": "val",
+            "label": "Other",
+            "domain": "d2",
+            "frame_id": "200",
+            "timestamp": "6200.0",
+            "video": "frozen.mp4",
+            "src_rel": "images/frozen.jpg",
+            "dst_rel": "val/Other/frozen.jpg",
+            "augmented": "0",
+        }
+    )
+    manifest = tmp_path / "dataset" / "split_manifest.csv"
+    _write_manifest(manifest, rows)
+
+    samples = load_split_manifest(manifest)
+    assignment = assign_internal_validation(samples, val_ratio=0.2, seed=5)
+    report = validate_split_integrity(samples, assignment)
+    internal_val_labels = {
+        sample.label for sample in samples if assignment[sample.dst_rel] == "internal_val"
+    }
+
+    assert {"Forward", "In-Car", "Non-Forward"} <= internal_val_labels
+    assert assignment["train/Non-Forward/non_forward_aug.jpg"] == "train"
+    assert assignment["val/Other/frozen.jpg"] == "test"
+    assert report["group_leak_count"] == 0
+    assert report["augmented_not_train_count"] == 0
+
+
 def test_frame_and_event_metrics_separate_primary_three_from_other() -> None:
     rows = [
         PredictionRow("ds", "split", "m", 1, "a.jpg", "Forward", "Forward", "d", "v", 1.0),
@@ -238,4 +300,37 @@ def test_onnx_preprocessing_uses_bilinear_resize_like_torchvision(tmp_path: Path
         (2, 0, 1),
     )
 
+    assert np.allclose(actual, expected)
+
+
+def test_yolo_onnx_preprocessing_uses_ultralytics_classification_normalization(tmp_path: Path) -> None:
+    from autodri.workflows.aoi_equivalence import _load_normalized_image
+    from torchvision import transforms
+
+    image_path = tmp_path / "wide.png"
+    image = Image.new("RGB", (4, 2))
+    image.putdata(
+        [
+            (255, 0, 0),
+            (0, 255, 0),
+            (0, 0, 255),
+            (255, 255, 0),
+            (255, 0, 255),
+            (0, 255, 255),
+            (64, 64, 64),
+            (192, 192, 192),
+        ]
+    )
+    image.save(image_path)
+
+    actual = _load_normalized_image(image_path, 2, preprocess="yolo-cls")
+    expected = transforms.Compose(
+        [
+            transforms.Resize(2, interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop((2, 2)),
+            transforms.ToTensor(),
+        ]
+    )(image).numpy()
+
+    assert actual.shape == (3, 2, 2)
     assert np.allclose(actual, expected)

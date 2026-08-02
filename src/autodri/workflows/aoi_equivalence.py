@@ -81,6 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_predict_onnx.add_argument("--imgsz", type=int, default=224)
     p_predict_onnx.add_argument("--batch", type=int, default=64)
     p_predict_onnx.add_argument("--labels-json", default="")
+    p_predict_onnx.add_argument("--preprocess", choices=["torchvision", "yolo-cls"], default="torchvision")
     p_predict_onnx.add_argument("--providers", nargs="+", default=[])
     p_predict_onnx.set_defaults(func=cmd_predict_onnx)
 
@@ -274,7 +275,10 @@ def cmd_predict_onnx(args: argparse.Namespace) -> None:
     out_rows = []
     for start in range(0, len(samples), args.batch):
         batch_samples = samples[start : start + args.batch]
-        batch = np.stack([_load_normalized_image(data_dir / sample.dst_rel, args.imgsz) for sample in batch_samples], axis=0)
+        batch = np.stack(
+            [_load_normalized_image(data_dir / sample.dst_rel, args.imgsz, preprocess=args.preprocess) for sample in batch_samples],
+            axis=0,
+        )
         logits = session.run(None, {input_name: batch})[0]
         preds = np.asarray(logits).argmax(axis=1).tolist()
         for sample, pred_idx in zip(batch_samples, preds):
@@ -438,13 +442,25 @@ def _prediction_csv_row(dataset: str, split: str, model: str, seed: int, sample:
     }
 
 
-def _load_normalized_image(path: Path, imgsz: int):
+def _load_normalized_image(path: Path, imgsz: int, *, preprocess: str = "torchvision"):
     import numpy as np
     from PIL import Image
 
     with Image.open(path) as image:
+        image = image.convert("RGB")
+        if preprocess == "yolo-cls":
+            from torchvision import transforms
+
+            tensor = transforms.Compose(
+                [
+                    transforms.Resize(imgsz, interpolation=transforms.InterpolationMode.BILINEAR),
+                    transforms.CenterCrop((imgsz, imgsz)),
+                    transforms.ToTensor(),
+                ]
+            )(image)
+            return tensor.numpy().astype(np.float32)
         arr = np.asarray(
-            image.convert("RGB").resize((imgsz, imgsz), resample=Image.Resampling.BILINEAR),
+            image.resize((imgsz, imgsz), resample=Image.Resampling.BILINEAR),
             dtype=np.float32,
         ) / 255.0
     mean = np.asarray([0.485, 0.456, 0.406], dtype=np.float32)
