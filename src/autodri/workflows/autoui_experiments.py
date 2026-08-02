@@ -29,6 +29,7 @@ from autodri.aoi.equivalence import (
     write_csv_rows,
 )
 from autodri.aoi.participant_lopo import build_lopo_dataset
+from autodri.common.paths import workspace_root
 
 try:
     import cv2
@@ -39,7 +40,7 @@ except ImportError:  # pragma: no cover - only needed for review-frame rendering
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-WORKSPACE_ROOT = Path(os.environ.get("AUTODRI_WORKSPACE", "/data/home/sim6g/autodri_workspace"))
+WORKSPACE_ROOT = workspace_root()
 DEFAULT_AUTOWIP_ROOT = WORKSPACE_ROOT / "artifacts" / "autoui_wip_experiments_20260523"
 DEFAULT_MULTI_SEED_ROOT = DEFAULT_AUTOWIP_ROOT / "lopo_all14_multiseed_primary3"
 DEFAULT_FEWSHOT_ROOT = DEFAULT_AUTOWIP_ROOT / "fewshot_participant_curve_primary3"

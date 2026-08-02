@@ -6,16 +6,17 @@ import glob
 import hashlib
 import json
 import math
-import os
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+from autodri.common.paths import workspace_root
+
 
 STATES = ("OFF", "ON", "UNCERTAIN")
-DEFAULT_WORKSPACE_ROOT = Path(os.environ.get("AUTODRI_WORKSPACE", "/data/home/sim6g/autodri_workspace"))
+DEFAULT_WORKSPACE_ROOT = workspace_root()
 
 
 @dataclass(frozen=True)
