@@ -11,7 +11,13 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pillow>=10.0",
+    "pytest>=8.0",
+    "tomli>=2.0; python_version < '3.11'",
+]
 experiments = [
     "numpy>=1.24",
     "onnx>=1.15",
@@ -24,6 +30,11 @@ experiments = [
     "torchvision>=0.15",
     "ultralytics>=8.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/zdu881/autodri"
+Documentation = "https://github.com/zdu881/autodri/tree/main/docs"
+Paper = "https://github.com/zdu881/autodri/blob/main/paper/autoui.pdf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

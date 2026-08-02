@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use Autodri, please cite the software and the accompanying method paper."
+title: "Autodri"
+type: software
+version: 0.1.0
+date-released: 2026-08-02
+authors:
+  - name: "Autodri contributors"
+repository-code: "https://github.com/zdu881/autodri"
+url: "https://github.com/zdu881/autodri"
+keywords:
+  - driver monitoring
+  - naturalistic driving
+  - gaze annotation
+  - hand-on-wheel detection
+  - human-in-the-loop

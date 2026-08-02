@@ -29,3 +29,8 @@ Canonical entrypoints use `python -m autodri.cli.<name>`.
 - `python -m autodri.cli.build_all_participants_window_metrics`
 - `python -m autodri.cli.build_participants_results_summary`
 - `python -m autodri.cli.export_gaze_qc_review_images`
+
+## Experiment Orchestration And Validation
+
+- `python -m autodri.cli.autoui_experiments`
+- `python -m autodri.cli.pipeline_validation_summary`
